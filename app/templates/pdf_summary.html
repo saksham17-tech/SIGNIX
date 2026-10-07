@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="{{ pdf_locale or 'en' }}">
+<head>
+<meta charset="utf-8">
+<title>{{ _('Your solar snapshot') }} · SIGNIX</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #1a1a1a;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  h1 {
+    font-size: 26px;
+    color: #3d2570;
+    margin: 0 0 4px;
+    letter-spacing: -0.3px;
+  }
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #c47a0b;
+    margin: 0 0 6px;
+  }
+  .address { color: #555; font-size: 13px; margin: 0 0 18px; }
+  .hero {
+    display: table;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 10px 0;
+    margin: 8px 0 20px;
+  }
+  .hero-card {
+    display: table-cell;
+    width: 33%;
+    background: #f7f4fc;
+    border: 1px solid #e4daf5;
+    border-radius: 14px;
+    padding: 16px 14px;
+    text-align: center;
+    vertical-align: top;
+  }
+  .hero-card .label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 6px;
+  }
+  .hero-card .value {
+    display: block;
+    font-size: 28px;
+    font-weight: 800;
+    color: #3d2570;
+    line-height: 1.1;
+  }
+  .hero-card .unit {
+    display: block;
+    font-size: 12px;
+    color: #666;
+    margin-top: 4px;
+  }
+  .section {
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+  }
+  .section h2 {
+    font-size: 15px;
+    color: #3d2570;
+    margin: 0 0 10px;
+  }
+  .row {
+    display: table;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  .row span:first-child {
+    display: table-cell;
+    color: #555;
+    font-weight: 600;
+  }
+  .row span:last-child {
+    display: table-cell;
+    text-align: right;
+    font-weight: 800;
+    color: #1a1a1a;
+  }
+  .suit-box {
+    background: #eef8f1;
+    border: 1px solid #cfe9d8;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-top: 8px;
+  }
+  .suit-box .tier {
+    font-size: 18px;
+    font-weight: 800;
+    color: #1a7a45;
+    text-transform: capitalize;
+  }
+  .disclaimer {
+    margin-top: 16px;
+    font-size: 10px;
+    color: #777;
+    line-height: 1.4;
+  }
+  .footer {
+    margin-top: 24px;
+    font-size: 10px;
+    color: #999;
+    text-align: center;
+  }
+  .page-break { page-break-before: always; }
+</style>
+</head>
+<body>
+  <p class="eyebrow">{{ _('Homeowner summary') }}</p>
+  <h1>{{ _('Your rooftop solar plan') }}</h1>
+  <p class="address">{{ loc.address }}</p>
+  {% if loc.map_svg_data_uri or loc.map_png_data_uri %}
+  <div class="map-snapshot" style="margin:12px 0 16px;">
+    <img src="{{ loc.map_png_data_uri or loc.map_svg_data_uri }}" alt="Rooftop outline" style="width:100%;max-width:520px;height:auto;border:1px solid #e0d6f0;border-radius:12px;"/>
+    <p class="disclaimer" style="margin-top:4px;">{{ _('Rooftop outline — amber areas are marked obstructions') }}</p>
+  </div>
+  {% endif %}
+
+  <div class="hero">
+    <div class="hero-card">
+      <span class="label">{{ _('Recommended system') }}</span>
+      <span class="value">{{ '%.1f'|format(loc.system_size or 0) }}</span>
+      <span class="unit">kW{% if loc.panel_count %} · approximately {{ loc.panel_count }} panels{% endif %}</span>
+    </div>
+    <div class="hero-card">
+      <span class="label">{{ _('Yearly generation') }}</span>
+      <span class="value">{{ '{:,.0f}'.format(loc.annual_generation or 0) }}</span>
+      <span class="unit">kWh / year</span>
+    </div>
+    <div class="hero-card">
+      <span class="label">{{ _('Monthly savings') }}</span>
+      <span class="value">₹{{ '{:,.0f}'.format(loc.monthly_savings or 0) }}</span>
+      <span class="unit">{{ _('indicative') }}</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>{{ _('What it costs') }}</h2>
+    <div class="row"><span>{{ _('System cost (mid)') }}</span><span>₹{{ '{:,.0f}'.format(loc.system_cost or 0) }}</span></div>
+    <div class="row"><span>{{ _('Central subsidy (estimate)') }}</span><span>−₹{{ '{:,.0f}'.format(loc.subsidy_amount or 0) }}</span></div>
+    <div class="row"><span>{{ _('Net investment') }}</span><span>₹{{ '{:,.0f}'.format(loc.net_investment or 0) }}</span></div>
+    <p class="disclaimer">{{ subsidy_caveat }} · {{ subsidy_eligibility_assumption }}</p>
+  </div>
+
+  <div class="section">
+    <h2>{{ _('When it pays back') }}</h2>
+    {% set nom = (loc.extras or {}).get('nominal_payback_years', loc.payback_years) if loc.extras is defined else loc.payback_years %}
+    {% if not nom and loc.extras %}{% set nom = loc.extras.get('nominal_payback_years') or loc.payback_years %}{% endif %}
+    <div class="row">
+      <span>{{ _('Nominal payback') }} <small>({{ _('tariff may rise over time') }})</small></span>
+      <span>{% if loc.nominal_payback_years or nom %}{{ loc.nominal_payback_years or nom }} {{ _('years') }}{% else %}—{% endif %}</span>
+    </div>
+    <div class="row">
+      <span>{{ _('Simple payback') }} <small>({{ _('flat tariff') }})</small></span>
+      <span>
+        {% set simp = loc.simple_payback_years or (loc.extras.get('simple_payback_years') if loc.extras else none) %}
+        {% if simp %}{{ simp }} {{ _('years') }}{% else %}—{% endif %}
+      </span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>{{ _('How suitable is this roof?') }}</h2>
+    {% set rating = loc.suitability_rating or {} %}
+    {% set viability = rating.get('viability') or rating %}
+    <div class="suit-box">
+      <div class="tier">{{ (viability.get('tier') or rating.get('tier') or 'Rated')|replace('_',' ') }}</div>
+      {% if rating.get('overall_score') is not none %}
+      <div style="margin-top:4px;font-weight:700;color:#333;">{{ _('Score') }}: {{ rating.get('overall_score') }} / 100</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="disclaimer">{{ monetary_disclaimer }}</p>
+  {% if loc.qr_png_data_uri %}
+  <div style="margin-top:14px;">
+    <img src="{{ loc.qr_png_data_uri }}" alt="QR" width="88" height="88"/>
+    <p class="disclaimer">{{ _('Scan to open live estimate') }}: {{ loc.live_estimate_url }}</p>
+  </div>
+  {% endif %}
+  <p class="footer">SIGNIX · {{ _('Page') }} 1 · {{ _('Summary for homeowners — not a formal quote') }}</p>
+
+  <div class="page-break"></div>
+
+  <p class="eyebrow">{{ _('Next steps') }}</p>
+  <h1>{{ _('Before you decide') }}</h1>
+  <div class="section" style="border-top:none;padding-top:0;">
+    <div class="row"><span>{{ _('Address') }}</span><span style="font-weight:600;">{{ loc.address }}</span></div>
+    {% if loc.orientation_label %}
+    <div class="row"><span>{{ _('Roof orientation') }}</span><span>{{ loc.orientation_label }}</span></div>
+    {% endif %}
+    {% if loc.battery_kwh and loc.battery_kwh > 0 %}
+    <div class="row"><span>{{ _('Battery included') }}</span><span>{{ '%.1f'|format(loc.battery_kwh) }} kWh</span></div>
+    {% endif %}
+    <div class="row"><span>{{ _('Subsidy (estimate)') }}</span><span>₹{{ '{:,.0f}'.format(loc.subsidy_amount or 0) }}</span></div>
+  </div>
+
+  <div class="section">
+    <h2>{{ _('Suggested next steps') }}</h2>
+    <p style="margin:0 0 8px;color:#333;">1. {{ _('Share this summary with your family or building society.') }}</p>
+    <p style="margin:0 0 8px;color:#333;">2. {{ _('Confirm subsidy eligibility with your DISCOM / vendor.') }}</p>
+    <p style="margin:0 0 8px;color:#333;">3. {{ _('Ask installers for a site survey and a firm quote.') }}</p>
+    <p style="margin:0;color:#333;">4. {{ _('Download the full technical report if you need detailed assumptions.') }}</p>
+  </div>
+
+  <p class="disclaimer">{{ monetary_disclaimer }}<br>{{ subsidy_caveat }}</p>
+  <p class="footer">SIGNIX · {{ _('Page') }} 2 · {{ _('Indicative planning aid only') }}</p>
+</body>
+</html>

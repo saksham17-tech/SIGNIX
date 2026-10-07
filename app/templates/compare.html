@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Compare') }} · SIGNIX{% endblock %}
+{% block content %}
+<section class="compare-page">
+  <div class="compare-header">
+    <div>
+      <p class="eyebrow">{{ _('Scenarios') }}</p>
+      <h1>{{ _('Compare estimates') }}</h1>
+      <p>{{ _('Hold 2–3 configurations side-by-side — same roof, different sizing or battery choices.') }}</p>
+    </div>
+  </div>
+
+  {% if locations|length < 1 %}
+  <div class="compare-empty">
+    <h2>{{ _('No saved estimates yet') }}</h2>
+    <p>{{ _('Run an estimate, then use “Duplicate scenario” on the report to compare options.') }}</p>
+    <a class="btn-grad" href="{{ url_for('pages.index') }}">{{ _('Start an estimate') }}</a>
+  </div>
+  {% else %}
+  <form method="post" class="compare-picker">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="compare-picker-heading">
+      <div>
+        <h2>{{ _('Choose scenarios') }}</h2>
+        <p>{{ _('Pick 2 or 3 saved estimates (ideally from the same roof group).') }}</p>
+      </div>
+      <button type="submit" class="btn-primary-lg">{{ _('Compare selected') }}</button>
+    </div>
+    <div class="location-checklist">
+      {% for location in locations %}
+      <label class="location-option">
+        <input type="checkbox" name="location_ids" value="{{ location.id }}"
+          {% if location in selected_locations or location.id in selected_locations|map(attribute='id') %}checked{% endif %}>
+        <span>
+          <strong>
+            {% if location.scenario_label %}{{ location.scenario_label }}
+            {% else %}{{ location.address }}{% endif %}
+          </strong>
+          <small>
+            {{ location.address }} ·
+            {% if location.sizing_mode %}{{ location.sizing_mode }} · {% endif %}
+            {{ location.system_size|round(2) }} kW ·
+            {{ _('Saved') }} {{ location.created_at.strftime("%b %d, %Y") }}
+            {% if location.roof_group_id %}<span class="group-tag">grp {{ location.roof_group_id[:8] }}</span>{% endif %}
+          </small>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+  </form>
+
+  {% if selected_locations|length >= 2 %}
+  <section class="comparison-card">
+    <div class="comparison-heading">
+      <div>
+        <p class="eyebrow">{{ _('Side-by-side view') }}</p>
+        <h2>{{ _('Scenario comparison') }}</h2>
+      </div>
+      <span class="comparison-count">{{ selected_locations|length }} {{ _('scenarios') }}</span>
+    </div>
+    <div class="comparison-scroll">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>{{ _('Metric') }}</th>
+            {% for location in selected_locations %}
+            <th>
+              <div class="scenario-col-title">
+                {{ location.scenario_label or location.address }}
+              </div>
+              <div class="scenario-col-sub">
+                {{ location.sizing_mode or '—' }}
+                {% if location.battery_kwh and location.battery_kwh > 0 %}· {{ '%.1f'|format(location.battery_kwh) }} kWh batt{% endif %}
+              </div>
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% set winners = (comparison.winners if comparison else {}) %}
+          <tr>
+            <th>{{ _('System size') }}</th>
+            {% for location in selected_locations %}
+            {% set sizing = (location.extras or {}).get('sizing') if location.extras else None %}
+            <td class="{% if location.id in winners.get('system_size', []) %}metric-best{% endif %}">
+              <strong>{{ "%.2f"|format(location.system_size or 0) }} kW</strong>
+              {% if sizing %}
+              <div class="metric-sub">
+                min {{ "%.2f"|format(sizing.min_kw or 0) }}
+                · max {{ "%.2f"|format(sizing.max_kw or 0) }}
+              </div>
+              {% endif %}
+              {% if location.id in winners.get('system_size', []) %}<span class="best-tag">{{ _('Best') }}</span>{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('Net investment') }}</th>
+            {% for location in selected_locations %}
+            <td class="{% if location.id in winners.get('net_investment', []) %}metric-best{% endif %}">
+              &#8377;{{ "{:,.0f}".format(location.net_investment or 0) }}
+              {% if location.id in winners.get('net_investment', []) %}<span class="best-tag">{{ _('Lowest') }}</span>{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('25-year savings') }} <span class="metric-hint">(indicative)</span></th>
+            {% for location in selected_locations %}
+            {% set row = (comparison.rows|selectattr('id','equalto',location.id)|list|first) if comparison else none %}
+            {% if row %}
+              {% set s25 = row.savings_25yr %}
+            {% else %}
+              {% set s25 = (location.monthly_savings or 0) * 12 * 25 %}
+            {% endif %}
+            <td class="{% if location.id in winners.get('savings_25yr', []) %}metric-best{% endif %}">
+              &#8377;{{ "{:,.0f}".format(s25) }}
+              {% if location.id in winners.get('savings_25yr', []) %}<span class="best-tag">{{ _('Highest') }}</span>{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('Payback period') }}</th>
+            {% for location in selected_locations %}
+            <td class="{% if location.id in winners.get('payback_years', []) %}metric-best{% endif %}">
+              {% if location.payback_years %}
+                {{ "%.1f"|format(location.payback_years) }} {{ _('years') }}
+              {% else %}—{% endif %}
+              {% if location.id in winners.get('payback_years', []) %}<span class="best-tag">{{ _('Fastest') }}</span>{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('Suitability') }}</th>
+            {% for location in selected_locations %}
+            {% set rating = location.suitability_rating or {} %}
+            {% set viability = rating.get('overall_viability') or rating.get('viability') or {} %}
+            <td class="{% if location.id in winners.get('suitability_score', []) %}metric-best{% endif %}">
+              {% if viability.get('tier') or viability.get('score') is not none %}
+                <span class="suit-pill">{{ (viability.get('tier') or 'rated')|replace('_',' ') }}</span>
+                {% if viability.get('score') is not none %}
+                <div class="metric-sub">score {{ viability.get('score') }}</div>
+                {% endif %}
+              {% else %}—{% endif %}
+              {% if location.id in winners.get('suitability_score', []) %}<span class="best-tag">{{ _('Best') }}</span>{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('Annual generation') }}</th>
+            {% for location in selected_locations %}
+            <td>{{ "{:,.0f}".format(location.annual_generation or 0) }} kWh</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('Monthly savings') }}</th>
+            {% for location in selected_locations %}
+            <td>&#8377;{{ "{:,.0f}".format(location.monthly_savings or 0) }}</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('Subsidy') }}</th>
+            {% for location in selected_locations %}
+            <td>&#8377;{{ "{:,.0f}".format(location.subsidy_amount or 0) }}</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('Battery') }}</th>
+            {% for location in selected_locations %}
+            <td>
+              {% if location.battery_kwh and location.battery_kwh > 0 %}
+                {{ "%.2f"|format(location.battery_kwh) }} kWh
+              {% else %}{{ _('None') }}{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>{{ _('Actions') }}</th>
+            {% for location in selected_locations %}
+            <td class="compare-actions">
+              <a href="{{ url_for('pages.report', location_id=location.id) }}">{{ _('Open') }}</a>
+            </td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    {% if comparison and comparison.recommendation %}
+    <div class="compare-recommendation" role="status">
+      <span class="compare-recommendation-label">{{ _('Recommendation') }}</span>
+      <p>{{ comparison.recommendation }}</p>
+    </div>
+    {% endif %}
+    <p class="monetary-disclaimer compare-disclaimer">{{ monetary_disclaimer }}</p>
+  </section>
+  {% elif request.method == "POST" or request.args.get('ids') %}
+  <p class="compare-selection-error">{{ _('Select at least 2 of your saved estimates to compare them.') }}</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

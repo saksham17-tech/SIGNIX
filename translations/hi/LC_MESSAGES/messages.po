@@ -1,0 +1,1282 @@
+# Hindi translations for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-09-18 14:27+0530\n"
+"PO-Revision-Date: 2026-09-17 11:22+0530\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: hi\n"
+"Language-Team: hi <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: app/assistant.py:75
+msgid "A non-empty message is required"
+msgstr "संदेश खाली नहीं होना चाहिए"
+
+#: app/assistant.py:78
+msgid "Daily assistant message limit reached"
+msgstr "आज के सहायक संदेशों की सीमा पूरी हो गई है"
+
+#: app/assistant.py:82
+msgid "The assistant is not configured"
+msgstr "सहायक कॉन्फ़िगर नहीं है"
+
+#: app/assistant.py:99
+msgid "The assistant is temporarily unavailable"
+msgstr "सहायक अस्थायी रूप से अनुपलब्ध है"
+
+#: app/auth.py:51 app/auth.py:113
+msgid "That email is already registered."
+msgstr "यह ईमेल पहले से पंजीकृत है।"
+
+#: app/auth.py:56
+msgid "Profile updated."
+msgstr "प्रोफ़ाइल अपडेट की गई।"
+
+#: app/auth.py:67
+msgid "Current password is incorrect."
+msgstr "वर्तमान पासवर्ड गलत है।"
+
+#: app/auth.py:74
+msgid "Password changed."
+msgstr "पासवर्ड बदल दिया गया।"
+
+#: app/auth.py:99
+msgid "Settings updated."
+msgstr "सेटिंग्स अपडेट की गईं।"
+
+#: app/auth.py:130
+msgid "You're already logged in."
+msgstr "आप पहले से लॉग इन हैं।"
+
+#: app/auth.py:138
+msgid "Invalid email or password."
+msgstr "ईमेल या पासवर्ड अमान्य है।"
+
+#: app/forms.py:20
+msgid "This field is required."
+msgstr "यह फ़ील्ड आवश्यक है।"
+
+#: app/forms.py:21
+msgid "Please enter a valid email address."
+msgstr "कृपया मान्य ईमेल पता दर्ज करें।"
+
+#: app/forms.py:22
+msgid "Passwords must match."
+msgstr "पासवर्ड मेल खाने चाहिए।"
+
+#: app/forms.py:44 app/forms.py:55 app/forms.py:76
+msgid "Email"
+msgstr "ईमेल"
+
+#: app/forms.py:46 app/forms.py:58
+msgid "Password"
+msgstr "पासवर्ड"
+
+#: app/forms.py:47 app/templates/base.html:98 app/templates/login.html:2
+#: app/templates/login.html:8 app/templates/signup.html:19
+msgid "Log in"
+msgstr "लॉग इन करें"
+
+#: app/forms.py:52 app/forms.py:73
+msgid "Display name"
+msgstr "प्रदर्शन नाम"
+
+#: app/forms.py:61
+msgid "Confirm password"
+msgstr "पासवर्ड की पुष्टि करें"
+
+#: app/forms.py:67 app/templates/base.html:99 app/templates/signup.html:2
+#: app/templates/signup.html:8
+msgid "Create account"
+msgstr "खाता बनाएं"
+
+#: app/forms.py:78
+msgid "Save changes"
+msgstr "बदलाव सहेजें"
+
+#: app/forms.py:84
+msgid "Current password"
+msgstr "वर्तमान पासवर्ड"
+
+#: app/forms.py:87
+msgid "New password"
+msgstr "नया पासवर्ड"
+
+#: app/forms.py:90
+msgid "Confirm new password"
+msgstr "नए पासवर्ड की पुष्टि करें"
+
+#: app/forms.py:96
+msgid "Change password"
+msgstr "पासवर्ड बदलें"
+
+#: app/forms.py:101 app/templates/index.html:112
+msgid "Tariff per kWh (₹)"
+msgstr "प्रति kWh टैरिफ (₹)"
+
+#: app/forms.py:104
+msgid "Number must be zero or greater."
+msgstr "संख्या शून्य या उससे अधिक होनी चाहिए।"
+
+#: app/forms.py:108 app/templates/index.html:119
+msgid "State"
+msgstr "राज्य"
+
+#: app/forms.py:109
+msgid "Select a state"
+msgstr "राज्य चुनें"
+
+#: app/forms.py:114 app/templates/index.html:130
+msgid "Property type"
+msgstr "संपत्ति का प्रकार"
+
+#: app/forms.py:118
+msgid "Save settings"
+msgstr "सेटिंग्स सहेजें"
+
+#: app/templates/base.html:6
+msgid "SIGNIX — Bridging You to Clean Energy"
+msgstr "SIGNIX — आपको स्वच्छ ऊर्जा से जोड़ता है"
+
+#: app/templates/base.html:39
+msgid "Track, Save, Impact."
+msgstr "ट्रैक · बचत · प्रभाव"
+
+#: app/templates/base.html:45 app/templates/dashboard.html:6
+msgid "Dashboard"
+msgstr "डैशबोर्ड"
+
+#: app/templates/base.html:48
+msgid "Estimates"
+msgstr "अनुमान"
+
+#: app/templates/base.html:51
+msgid "Reports"
+msgstr "रिपोर्ट"
+
+#: app/templates/base.html:54
+msgid "Saved Locations"
+msgstr "सहेजे गए स्थान"
+
+#: app/templates/base.html:57 app/templates/compare.html:2
+msgid "Compare"
+msgstr "तुलना"
+
+#: app/templates/base.html:60 app/templates/savings.html:2
+msgid "Savings"
+msgstr "बचत"
+
+#: app/templates/base.html:63 app/templates/profile.html:2
+#: app/templates/profile.html:8
+msgid "Profile"
+msgstr "प्रोफ़ाइल"
+
+#: app/templates/base.html:66 app/templates/settings.html:2
+#: app/templates/settings.html:8
+msgid "Settings"
+msgstr "सेटिंग्स"
+
+#: app/templates/base.html:71
+msgid "India's Clean Energy Goal"
+msgstr "भारत का स्वच्छ ऊर्जा लक्ष्य"
+
+#: app/templates/base.html:72
+msgid "1 crore rooftop / 500 GW clean-energy target by 2030."
+msgstr "2030 तक 1 करोड़ रूफटॉप / 500 GW स्वच्छ ऊर्जा का लक्ष्य।"
+
+#: app/templates/base.html:79
+msgid "Toggle menu"
+msgstr "मेनू टॉगल करें"
+
+#: app/templates/base.html:81
+msgid "Notifications"
+msgstr "सूचनाएं"
+
+#: app/templates/base.html:82
+msgid "Language"
+msgstr "भाषा"
+
+#: app/templates/base.html:95
+msgid "Log out"
+msgstr "लॉग आउट करें"
+
+#: app/templates/base.html:109
+msgid ""
+"SIGNIX · Indicative estimates only · Verify DISCOM / MNRE rules before "
+"procurement"
+msgstr ""
+"SIGNIX · केवल सांकेतिक अनुमान · खरीद से पहले DISCOM / MNRE नियमों की "
+"पुष्टि करें"
+
+#: app/templates/base.html:123
+msgid "Assistant is thinking"
+msgstr "सहायक सोच रहा है"
+
+#: app/templates/base.html:124
+msgid "You've reached today's question limit."
+msgstr "आज की प्रश्न सीमा पूरी हो गई है।"
+
+#: app/templates/base.html:125
+msgid "The assistant is temporarily unavailable. Please try again later."
+msgstr "सहायक अस्थायी रूप से अनुपलब्ध है। कृपया बाद में पुनः प्रयास करें।"
+
+#: app/templates/base.html:126
+msgid "Received an empty response from assistant."
+msgstr "सहायक से खाली उत्तर प्राप्त हुआ।"
+
+#: app/templates/base.html:127
+msgid "Unable to connect. Please check your connection and try again."
+msgstr "कनेक्ट नहीं हो सका। कृपया अपना कनेक्शन जांचें और पुनः प्रयास करें।"
+
+#: app/templates/base.html:128 app/templates/base.html:159
+msgid "Use voice input"
+msgstr "आवाज़ से इनपुट लें"
+
+#: app/templates/base.html:129
+msgid "Listening..."
+msgstr "सुन रहा है..."
+
+#: app/templates/base.html:130
+msgid "Voice input is not supported in this browser"
+msgstr "इस ब्राउज़र में आवाज़ से इनपुट समर्थित नहीं है"
+
+#: app/templates/base.html:131
+msgid "Read response aloud"
+msgstr "उत्तर ज़ोर से पढ़ें"
+
+#: app/templates/base.html:132
+msgid "Voice output is not available for this language"
+msgstr "इस भाषा के लिए आवाज़ में उत्तर उपलब्ध नहीं है"
+
+#: app/templates/base.html
+msgid "Start voice mode"
+msgstr "वॉइस मोड शुरू करें"
+
+#: app/templates/base.html
+msgid "Stop voice mode"
+msgstr "वॉइस मोड बंद करें"
+
+#: app/templates/base.html
+msgid "Voice mode listening"
+msgstr "वॉइस मोड सुन रहा है..."
+
+#: app/templates/base.html
+msgid "Voice mode thinking"
+msgstr "वॉइस मोड सोच रहा है..."
+
+#: app/templates/base.html
+msgid "Voice mode speaking"
+msgstr "वॉइस मोड बोल रहा है..."
+
+#: app/templates/base.html
+msgid "Voice mode sends audio to your browser vendor for speech recognition; it is not processed on-device."
+msgstr "वॉइस मोड आवाज़ पहचानने के लिए ऑडियो आपके ब्राउज़र प्रदाता को भेजता है; इसे डिवाइस पर संसाधित नहीं किया जाता।"
+
+#: app/templates/pdf_report.html
+msgid "Rooftop Solar Estimation Report"
+msgstr "रूफटॉप सोलर अनुमान रिपोर्ट"
+
+#: app/templates/pdf_report.html
+msgid "Orientation"
+msgstr "दिशा"
+
+#: app/templates/pdf_report.html
+msgid "Battery"
+msgstr "बैटरी"
+
+#: app/templates/pdf_report.html
+msgid "Inverter"
+msgstr "इन्वर्टर"
+
+#: app/templates/pdf_report.html
+msgid "Data"
+msgstr "डेटा"
+
+#: app/templates/pdf_report.html
+msgid "System overview"
+msgstr "सिस्टम का अवलोकन"
+
+#: app/templates/pdf_report.html
+msgid "System size"
+msgstr "सिस्टम का आकार"
+
+#: app/templates/pdf_report.html
+msgid "Payback"
+msgstr "वापसी अवधि"
+
+#: app/templates/pdf_report.html
+msgid "yrs"
+msgstr "वर्ष"
+
+#: app/templates/pdf_report.html
+msgid "Item"
+msgstr "मद"
+
+#: app/templates/pdf_report.html
+msgid "Value"
+msgstr "मान"
+
+#: app/templates/pdf_report.html
+msgid "Total roof area"
+msgstr "कुल छत का क्षेत्रफल"
+
+#: app/templates/pdf_report.html
+msgid "Obstructed area"
+msgstr "बाधित क्षेत्रफल"
+
+#: app/templates/pdf_report.html
+msgid "Usable area"
+msgstr "उपयोगी क्षेत्रफल"
+
+#: app/templates/base.html
+msgid "Exit voice mode"
+msgstr "वॉइस मोड से बाहर निकलें"
+
+#: app/templates/pdf_report.html app/pages.py
+msgid "Solar Report"
+msgstr "सोलर रिपोर्ट"
+
+#: app/templates/pdf_report.html
+msgid "Roof capacity (from drawing)"
+msgstr "ड्रॉइंग के अनुसार छत की क्षमता"
+
+#: app/templates/pdf_report.html
+msgid "Sizing method"
+msgstr "आकार निर्धारित करने की विधि"
+
+#: app/templates/pdf_report.html
+msgid "Bill-based sizing"
+msgstr "बिल आधारित आकार निर्धारण"
+
+#: app/templates/pdf_report.html
+msgid "Monthly bill (input)"
+msgstr "मासिक बिल (इनपुट)"
+
+#: app/templates/pdf_report.html
+msgid "Tariff used"
+msgstr "प्रयुक्त टैरिफ"
+
+#: app/templates/pdf_report.html
+msgid "Estimated monthly units"
+msgstr "अनुमानित मासिक यूनिट"
+
+#: app/templates/pdf_report.html
+msgid "units"
+msgstr "यूनिट"
+
+#: app/templates/pdf_report.html
+msgid "Estimated daily units"
+msgstr "अनुमानित दैनिक यूनिट"
+
+#: app/templates/pdf_report.html
+msgid "Recommended range"
+msgstr "अनुशंसित सीमा"
+
+#: app/templates/pdf_report.html
+msgid "Design size used"
+msgstr "प्रयुक्त डिज़ाइन आकार"
+
+#: app/templates/pdf_report.html
+msgid "capped by roof if needed"
+msgstr "आवश्यकता होने पर छत के अनुसार सीमित"
+
+#: app/templates/pdf_report.html
+msgid "Suitability rating"
+msgstr "उपयुक्तता रेटिंग"
+
+#: app/templates/pdf_report.html
+msgid "Overall viability"
+msgstr "समग्र व्यवहार्यता"
+
+#: app/templates/pdf_report.html
+msgid "Estimate confidence"
+msgstr "अनुमान की विश्वसनीयता"
+
+#: app/templates/pdf_report.html
+msgid "Priority"
+msgstr "प्राथमिकता"
+
+#: app/templates/pdf_report.html
+msgid "Factor"
+msgstr "कारक"
+
+#: app/templates/pdf_report.html
+msgid "Score"
+msgstr "स्कोर"
+
+#: app/templates/pdf_report.html
+msgid "Tier / detail"
+msgstr "स्तर / विवरण"
+
+#: app/templates/pdf_report.html
+msgid "Performance indicators"
+msgstr "प्रदर्शन संकेतक"
+
+#: app/templates/pdf_report.html
+msgid "Metric"
+msgstr "मापदंड"
+
+#: app/templates/pdf_report.html
+msgid "Specific yield"
+msgstr "विशिष्ट उत्पादन"
+
+#: app/templates/pdf_report.html
+msgid "Capacity factor"
+msgstr "क्षमता कारक"
+
+#: app/templates/pdf_report.html
+msgid "Orientation factor (vs South)"
+msgstr "दिशा कारक (दक्षिण की तुलना में)"
+
+#: app/templates/pdf_report.html
+msgid "Recommended tilt"
+msgstr "अनुशंसित झुकाव"
+
+#: app/templates/pdf_report.html
+msgid "latitude"
+msgstr "अक्षांश"
+
+#: app/templates/pdf_report.html
+msgid "Performance ratio (assumed)"
+msgstr "प्रदर्शन अनुपात (मान्य)"
+
+#: app/templates/pdf_report.html
+msgid "Peak sun hours (assumed)"
+msgstr "पीक धूप घंटे (मान्य)"
+
+#: app/templates/pdf_report.html
+msgid "LCOE (25 yr)"
+msgstr "LCOE (25 वर्ष)"
+
+#: app/templates/pdf_report.html
+msgid "Lifetime energy (25 yr, 0.5%/yr degradation)"
+msgstr "जीवनकाल ऊर्जा (25 वर्ष, 0.5%/वर्ष क्षरण)"
+
+#: app/templates/pdf_report.html
+msgid "Self-consumption share"
+msgstr "स्व-खपत का हिस्सा"
+
+#: app/templates/pdf_report.html
+msgid "Monthly generation (kWh)"
+msgstr "मासिक उत्पादन (kWh)"
+
+#: app/templates/pdf_report.html
+msgid "Financial summary"
+msgstr "वित्तीय सारांश"
+
+#: app/templates/pdf_report.html
+msgid "PV system cost (mid estimate)"
+msgstr "PV सिस्टम लागत (मध्य अनुमान)"
+
+#: app/templates/pdf_report.html
+msgid "Typical cost band"
+msgstr "सामान्य लागत सीमा"
+
+#: app/templates/pdf_report.html
+msgid "Battery storage"
+msgstr "बैटरी भंडारण"
+
+#: app/templates/pdf_report.html
+msgid "Net investment"
+msgstr "शुद्ध निवेश"
+
+#: app/templates/pdf_report.html
+msgid "Estimated monthly savings"
+msgstr "अनुमानित मासिक बचत"
+
+#: app/templates/pdf_report.html
+msgid "Est. 25-year bill savings (flat tariff)"
+msgstr "अनुमानित 25-वर्षीय बिल बचत (स्थिर टैरिफ)"
+
+#: app/templates/pdf_report.html
+msgid "Indicative annual O&M reserve"
+msgstr "संकेतात्मक वार्षिक O&M प्रावधान"
+
+#: app/templates/pdf_report.html
+msgid "Recommended inverter"
+msgstr "अनुशंसित इन्वर्टर"
+
+#: app/templates/pdf_report.html
+msgid "Best for"
+msgstr "इसके लिए सर्वोत्तम"
+
+#: app/templates/pdf_report.html
+msgid "Subsidy eligibility"
+msgstr "सब्सिडी पात्रता"
+
+#: app/templates/pdf_report.html
+msgid "Typically eligible (DISCOM conditions apply)"
+msgstr "आमतौर पर पात्र (DISCOM की शर्तें लागू)"
+
+#: app/templates/pdf_report.html
+msgid "Usually not eligible"
+msgstr "आमतौर पर पात्र नहीं"
+
+#: app/templates/pdf_report.html
+msgid "Environmental impact"
+msgstr "पर्यावरणीय प्रभाव"
+
+#: app/templates/pdf_report.html
+msgid "CO₂ reduction / year"
+msgstr "CO₂ कमी / वर्ष"
+
+#: app/templates/pdf_report.html
+msgid "tons"
+msgstr "टन"
+
+#: app/templates/pdf_report.html
+msgid "Equivalent trees planted"
+msgstr "समतुल्य लगाए गए पेड़"
+
+#: app/templates/pdf_report.html
+msgid "Equivalent km not driven"
+msgstr "समतुल्य वाहन-रहित किलोमीटर"
+
+#: app/templates/pdf_report.html
+msgid "Equivalent fuel saved"
+msgstr "समतुल्य बचाया गया ईंधन"
+
+#: app/templates/pdf_report.html
+msgid "Key assumptions"
+msgstr "मुख्य मान्यताएं"
+
+#: app/templates/pdf_report.html
+msgid "Bill path ≈ ₹10/unit · ~135 units/month/kW (~4–5.5 units/day/kWp). Energy check uses PSH × PR."
+msgstr "बिल विधि ≈ ₹10/यूनिट · ~135 यूनिट/माह/kW (~4–5.5 यूनिट/दिन/kWp)। ऊर्जा जांच में PSH × PR का उपयोग होता है।"
+
+#: app/templates/pdf_report.html
+msgid "PM Surya Ghar: ₹30,000/kW for first 2 kW + ₹18,000 for 2–3 kW step · max ₹78,000."
+msgstr "PM Surya Ghar: पहले 2 kW के लिए ₹30,000/kW + 2–3 kW चरण के लिए ₹18,000 · अधिकतम ₹78,000।"
+
+#: app/templates/pdf_report.html
+msgid "Residential cost band ~₹55k–85k/kW; commercial often ~₹35k–50k/kW. ~10 m² usable roof per kWp."
+msgstr "घरेलू लागत सीमा ~₹55k–85k/kW; व्यावसायिक लागत अक्सर ~₹35k–50k/kW। प्रति kWp ~10 m² उपयोगी छत।"
+
+#: app/templates/pdf_report.html
+msgid "0.5%%/yr degradation in 25-yr cashflow. Tariff held constant. Not a licensed design or DISCOM quote."
+msgstr "25-वर्षीय नकदी प्रवाह में 0.5%%/वर्ष क्षरण। टैरिफ स्थिर माना गया है। यह लाइसेंस प्राप्त डिज़ाइन या DISCOM कोट नहीं है।"
+
+#: app/templates/pdf_report.html
+msgid "Important practical points"
+msgstr "महत्वपूर्ण व्यावहारिक बातें"
+
+#: app/templates/pdf_report.html
+msgid "Generated by SIGNIX. Figures are indicative planning estimates only."
+msgstr "SIGNIX द्वारा बनाया गया। आंकड़े केवल संकेतात्मक योजना अनुमान हैं।"
+
+#: app/templates/pdf_report.html
+msgid "Confirm current MNRE / National Rooftop Solar Portal / local DISCOM rules, net-metering limits and vendor quotations before procurement."
+msgstr "खरीद से पहले वर्तमान MNRE / National Rooftop Solar Portal / स्थानीय DISCOM नियमों, नेट-मीटरिंग सीमाओं और विक्रेता कोटेशन की पुष्टि करें।"
+
+#: app/templates/pdf_report.html
+msgid "A structural and electrical site survey is required for final design."
+msgstr "अंतिम डिज़ाइन के लिए संरचनात्मक और विद्युत साइट सर्वेक्षण आवश्यक है।"
+
+#: app/assistant.py
+msgid "You do not have a saved suitability rating yet. Create an estimate first, and I can explain its score."
+msgstr "आपकी कोई saved suitability rating अभी नहीं है। पहले एक अनुमान बनाएं, फिर मैं उसका स्कोर समझा सकता हूँ।"
+
+#: app/templates/base.html:133
+msgid "Open Assistant Chat"
+msgstr "सहायक चैट खोलें"
+
+#: app/templates/base.html:133
+msgid "Ask Assistant"
+msgstr "सहायक से पूछें"
+
+#: app/templates/base.html:137 app/templates/base.html:142
+msgid "SIGNIX Assistant"
+msgstr "SIGNIX सहायक"
+
+#: app/templates/base.html:143
+msgid "Online · FAQ & Solar Info"
+msgstr "ऑनलाइन · सामान्य प्रश्न और सोलर जानकारी"
+
+#: app/templates/base.html:146
+msgid "Close Chat"
+msgstr "चैट बंद करें"
+
+#: app/templates/base.html:149
+msgid ""
+"This assistant can make mistakes — verify important details with your "
+"DISCOM."
+msgstr ""
+"यह सहायक गलतियां कर सकता है — महत्वपूर्ण जानकारी की पुष्टि अपने DISCOM से"
+" करें।"
+
+#: app/templates/base.html:153
+#, python-format
+msgid "Hello, %(name)s! 👋 How can I help you with rooftop solar or SIGNIX today?"
+msgstr ""
+"नमस्ते, %(name)s! 👋 आज मैं रूफटॉप सोलर या SIGNIX में आपकी कैसे मदद कर "
+"सकता हूँ?"
+
+#: app/templates/base.html:158
+msgid "Ask a question..."
+msgstr "एक सवाल पूछें..."
+
+#: app/templates/base.html:165
+msgid "Send message"
+msgstr "संदेश भेजें"
+
+#: app/templates/compare.html:7 app/templates/profile.html:26
+msgid "Saved locations"
+msgstr "सहेजे गए स्थान"
+
+#: app/templates/compare.html:8
+msgid "Compare estimates"
+msgstr "अनुमानों की तुलना करें"
+
+#: app/templates/compare.html:9
+msgid ""
+"Select two or three saved locations to compare their planning figures "
+"side by side."
+msgstr ""
+"अपने योजना के आंकड़ों की साथ-साथ तुलना करने के लिए दो या तीन सहेजे गए "
+"स्थान चुनें।"
+
+#: app/templates/compare.html:15
+msgid "Save at least 2 locations to compare them"
+msgstr "उनकी तुलना करने के लिए कम से कम 2 स्थान सहेजें"
+
+#: app/templates/compare.html:16
+msgid "Run another estimate and save it to see the differences here."
+msgstr "अंतर देखने के लिए एक और अनुमान चलाएं और उसे सहेजें।"
+
+#: app/templates/compare.html:17 app/templates/savings.html:17
+msgid "Start an estimate"
+msgstr "अनुमान शुरू करें"
+
+#: app/templates/compare.html:24
+msgid "Choose locations"
+msgstr "स्थान चुनें"
+
+#: app/templates/compare.html:25
+msgid "Pick 2 or 3 saved estimates."
+msgstr "2 या 3 सहेजे गए अनुमान चुनें।"
+
+#: app/templates/compare.html:27
+msgid "Compare selected"
+msgstr "चयनित की तुलना करें"
+
+#: app/templates/compare.html:35
+msgid "Saved"
+msgstr "सहेजा गया"
+
+#: app/templates/compare.html:46
+msgid "Side-by-side view"
+msgstr "साथ-साथ दृश्य"
+
+#: app/templates/compare.html:47
+msgid "Estimate comparison"
+msgstr "अनुमान तुलना"
+
+#: app/templates/compare.html:49
+msgid "locations"
+msgstr "स्थान"
+
+#: app/templates/compare.html:55
+msgid "Metric"
+msgstr "मानदंड"
+
+#: app/templates/compare.html:62
+msgid "System size"
+msgstr "सिस्टम साइज़"
+
+#: app/templates/compare.html:63
+msgid "Annual generation"
+msgstr "वार्षिक उत्पादन"
+
+#: app/templates/compare.html:64 app/templates/savings.html:67
+msgid "Monthly savings"
+msgstr "मासिक बचत"
+
+#: app/templates/compare.html:65 app/templates/savings.html:68
+msgid "Payback period"
+msgstr "पेबैक अवधि"
+
+#: app/templates/compare.html:66
+msgid "System cost"
+msgstr "सिस्टम लागत"
+
+#: app/templates/compare.html:67
+msgid "Subsidy"
+msgstr "सब्सिडी"
+
+#: app/templates/compare.html:68
+msgid "Roof area"
+msgstr "छत का क्षेत्रफल"
+
+#: app/templates/compare.html:74
+msgid "Select at least 2 of your saved locations to compare them."
+msgstr "तुलना के लिए अपने सहेजे गए स्थानों में से कम से कम 2 चुनें।"
+
+#: app/templates/dashboard.html:2
+msgid "SIGNIX — Dashboard"
+msgstr "SIGNIX — डैशबोर्ड"
+
+#: app/templates/dashboard.html:11
+msgid "Recent Reports"
+msgstr "हाल की रिपोर्ट"
+
+#: app/templates/dashboard.html:36
+msgid "No estimates yet."
+msgstr "अभी तक कोई अनुमान नहीं।"
+
+#: app/templates/dashboard.html:36 app/templates/index.html:30
+#: app/templates/index.html:199
+msgid "Start Estimation"
+msgstr "अनुमान शुरू करें"
+
+#: app/templates/index.html:2
+msgid "SIGNIX — Estimates"
+msgstr "SIGNIX — अनुमान"
+
+#: app/templates/index.html:7
+#, python-format
+msgid "Welcome to %(brand)s"
+msgstr "%(brand)s में आपका स्वागत है"
+
+#: app/templates/index.html:8
+msgid "Let's build a smarter, cleaner tomorrow."
+msgstr "आइए एक स्मार्ट, स्वच्छ कल बनाएं।"
+
+#: app/templates/index.html:15
+msgid "Search place, society, college, or full address"
+msgstr "स्थान, सोसाइटी, कॉलेज या पूरा पता खोजें"
+
+#: app/templates/index.html:16
+msgid "Search"
+msgstr "खोजें"
+
+#: app/templates/index.html:17
+msgid "Use current location"
+msgstr "वर्तमान स्थान का उपयोग करें"
+
+#: app/templates/index.html:20
+msgid "Or paste a Google Maps link (maps.app.goo.gl / maps.google.com)"
+msgstr "या Google Maps लिंक पेस्ट करें (maps.app.goo.gl / maps.google.com)"
+
+#: app/templates/index.html:21
+msgid "Use link"
+msgstr "लिंक का उपयोग करें"
+
+#: app/templates/index.html:28
+#, python-format
+msgid "Get your rooftop solar estimate in under %(minutes)s minutes"
+msgstr "अपना रूफटॉप सोलर अनुमान %(minutes)s मिनट में पाएं"
+
+#: app/templates/index.html:36
+msgid "Why Go Solar?"
+msgstr "सोलर क्यों अपनाएं?"
+
+#: app/templates/index.html:41
+#, python-format
+msgid "Save up to 90%%"
+msgstr "90%% तक बचाएं"
+
+#: app/templates/index.html:42
+msgid "on electricity bills"
+msgstr "बिजली के बिलों पर"
+
+#: app/templates/index.html:49
+msgid "Payback on investment"
+msgstr "निवेश पर पेबैक"
+
+#: app/templates/index.html:56
+msgid "PM Surya Ghar subsidy"
+msgstr "PM Surya Ghar सब्सिडी"
+
+#: app/templates/index.html:63
+msgid "CO₂/kW/Year Carbon Reduction"
+msgstr "CO₂/kW/वर्ष कार्बन कमी"
+
+#: app/templates/index.html:70
+msgid "Location"
+msgstr "स्थान"
+
+#: app/templates/index.html:72
+msgid "Rooftop Analysis"
+msgstr "रूफटॉप विश्लेषण"
+
+#: app/templates/index.html:74
+msgid "Results"
+msgstr "परिणाम"
+
+#: app/templates/index.html:79
+msgid "High-resolution satellite view is on by default."
+msgstr "डिफ़ॉल्ट रूप से हाई-रेज़ॉल्यूशन सैटेलाइट व्यू चालू है।"
+
+#: app/templates/index.html:79
+msgid "Step 1:"
+msgstr "चरण 1:"
+
+#: app/templates/index.html:79
+msgid "Draw your rooftop boundary."
+msgstr "अपनी छत की सीमा बनाएं।"
+
+#: app/templates/index.html:80
+msgid "Step 2:"
+msgstr "चरण 2:"
+
+#: app/templates/index.html:80
+msgid ""
+"Mark non-usable areas with a light dashed outline (water tank, staircase,"
+" AC units) — fill stays almost transparent so the roof stays visible. "
+"Usable area = roof − obstructions."
+msgstr ""
+"गैर-उपयोगी क्षेत्रों को हल्की डैश्ड रेखा से चिह्नित करें (पानी की टंकी, "
+"सीढ़ी, AC यूनिट) — भराव लगभग पारदर्शी रहता है ताकि छत दिखती रहे। उपयोगी "
+"क्षेत्र = छत − अवरोध।"
+
+#: app/templates/index.html:84
+msgid "Rooftop Boundary"
+msgstr "छत की सीमा"
+
+#: app/templates/index.html:85
+msgid "Mark Obstruction"
+msgstr "अवरोध चिह्नित करें"
+
+#: app/templates/index.html:86
+msgid "Draw"
+msgstr "बनाएं"
+
+#: app/templates/index.html:92
+msgid ""
+"Total roof: -- m² · Obstructed: -- m² = Usable: -- m² | Est. system size:"
+" -- kW"
+msgstr ""
+"कुल छत: -- m² · अवरुद्ध: -- m² = उपयोगी: -- m² | अनुमानित सिस्टम साइज़: "
+"-- kW"
+
+#: app/templates/index.html:94
+msgid "Clear obstructions"
+msgstr "अवरोध हटाएं"
+
+#: app/templates/index.html:95
+msgid "Clear all"
+msgstr "सभी हटाएं"
+
+#: app/templates/index.html:101
+msgid "System Options"
+msgstr "सिस्टम विकल्प"
+
+#: app/templates/index.html:102
+msgid ""
+"Size from your electricity bill (₹10/unit · 135 units/kW/month), then "
+"fine-tune orientation, inverter &amp; storage."
+msgstr ""
+"अपने बिजली बिल से साइज़ तय करें (₹10/यूनिट · 135 यूनिट/kW/माह), फिर "
+"ओरिएंटेशन, इन्वर्टर और स्टोरेज को फाइन-ट्यून करें।"
+
+#: app/templates/index.html:106
+msgid "Average monthly electricity bill (₹)"
+msgstr "औसत मासिक बिजली बिल (₹)"
+
+#: app/templates/index.html:107
+msgid "e.g. 5000"
+msgstr "उदा. 5000"
+
+#: app/templates/index.html:108
+msgid "Example: ₹5,000 ≈ 500 units ≈ 3.5–4 kW."
+msgstr "उदाहरण: ₹5,000 ≈ 500 यूनिट ≈ 3.5–4 kW।"
+
+#: app/templates/index.html:113
+msgid "e.g. 10"
+msgstr ""
+
+#: app/templates/index.html:115
+msgid "Used for savings calculations when set."
+msgstr "सेट होने पर बचत गणना के लिए उपयोग किया जाता है।"
+
+#: app/templates/index.html:121
+msgid "Use the default tariff"
+msgstr "डिफ़ॉल्ट टैरिफ का उपयोग करें"
+
+#: app/templates/index.html:126
+msgid "Used to look up a state tariff when no custom tariff is set."
+msgstr ""
+"जब कोई कस्टम टैरिफ सेट नहीं है, तो राज्य टैरिफ देखने के लिए उपयोग किया "
+"जाता है।"
+
+#: app/templates/index.html:132
+msgid "Residential home"
+msgstr "आवासीय घर"
+
+#: app/templates/index.html:133
+msgid "Shop / office / commercial"
+msgstr "दुकान / कार्यालय / वाणिज्यिक"
+
+#: app/templates/index.html:134
+msgid "Remote / unreliable grid"
+msgstr "दूरस्थ / अविश्वसनीय ग्रिड"
+
+#: app/templates/index.html:136
+msgid "Affects inverter recommendation (On-Grid / Hybrid / Off-Grid)."
+msgstr "यह इन्वर्टर सुझाव को प्रभावित करता है (ऑन-ग्रिड / हाइब्रिड / ऑफ-ग्रिड)।"
+
+#: app/templates/index.html:140
+msgid "What matters most to you?"
+msgstr "आपके लिए सबसे ज़्यादा क्या मायने रखता है?"
+
+#: app/templates/index.html:142
+msgid "Fastest payback / lowest upfront risk"
+msgstr "सबसे तेज़ पेबैक / सबसे कम शुरुआती जोखिम"
+
+#: app/templates/index.html:143
+msgid "Maximum long-term savings"
+msgstr "अधिकतम दीर्घकालिक बचत"
+
+#: app/templates/index.html:144
+msgid "Environmental impact (CO2 reduction)"
+msgstr "पर्यावरणीय प्रभाव (CO2 में कमी)"
+
+#: app/templates/index.html:145
+msgid "Backup power during outages"
+msgstr "बिजली कटौती के दौरान बैकअप पावर"
+
+#: app/templates/index.html:146
+msgid "No strong preference"
+msgstr "कोई खास प्राथमिकता नहीं"
+
+#: app/templates/index.html:148
+msgid "Helps us understand what to emphasize in your estimate."
+msgstr ""
+"इससे हमें यह समझने में मदद मिलती है कि आपके अनुमान में किस पर ज़ोर देना "
+"है।"
+
+#: app/templates/index.html:152
+msgid "Roof Orientation (Azimuth)"
+msgstr "छत की दिशा (एज़िमथ)"
+
+#: app/templates/index.html:154
+msgid "Auto-detect from drawing"
+msgstr "ड्रॉइंग से ऑटो-डिटेक्ट करें"
+
+#: app/templates/index.html:155
+msgid "South (best for India)"
+msgstr "दक्षिण (भारत के लिए सर्वश्रेष्ठ)"
+
+#: app/templates/index.html:156
+msgid "South-East"
+msgstr "दक्षिण-पूर्व"
+
+#: app/templates/index.html:157
+msgid "South-West"
+msgstr "दक्षिण-पश्चिम"
+
+#: app/templates/index.html:158
+msgid "East"
+msgstr "पूर्व"
+
+#: app/templates/index.html:159
+msgid "West"
+msgstr "पश्चिम"
+
+#: app/templates/index.html:160
+msgid "North (lowest yield)"
+msgstr "उत्तर (सबसे कम उत्पादन)"
+
+#: app/templates/index.html:162
+msgid ""
+"South-facing roofs in North India typically yield the highest annual "
+"generation."
+msgstr ""
+"उत्तर भारत में दक्षिणमुखी छतें आमतौर पर सबसे अधिक वार्षिक उत्पादन देती "
+"हैं।"
+
+#: app/templates/index.html:166
+msgid "Preferred inverter"
+msgstr "पसंदीदा इन्वर्टर"
+
+#: app/templates/index.html:168
+msgid "Auto-recommend"
+msgstr "ऑटो-सुझाव"
+
+#: app/templates/index.html:169
+msgid "On-Grid (bill savings, stable supply)"
+msgstr "ऑन-ग्रिड (बिल बचत, स्थिर आपूर्ति)"
+
+#: app/templates/index.html:170
+msgid "Hybrid (backup + battery)"
+msgstr "हाइब्रिड (बैकअप + बैटरी)"
+
+#: app/templates/index.html:171
+msgid "Off-Grid (full independence)"
+msgstr "ऑफ-ग्रिड (पूर्ण स्वतंत्रता)"
+
+#: app/templates/index.html:173
+msgid "On-Grid & Hybrid often subsidy-eligible; Off-Grid usually not."
+msgstr ""
+"ऑन-ग्रिड और हाइब्रिड अक्सर सब्सिडी के लिए पात्र होते हैं; ऑफ-ग्रिड आमतौर "
+"पर नहीं।"
+
+#: app/templates/index.html:179
+msgid "Need backup during power cuts"
+msgstr "बिजली कटौती के दौरान बैकअप चाहिए"
+
+#: app/templates/index.html:183
+msgid "Include battery storage"
+msgstr "बैटरी स्टोरेज शामिल करें"
+
+#: app/templates/index.html:186
+msgid "Battery capacity"
+msgstr "बैटरी क्षमता"
+
+#: app/templates/index.html:188
+msgid "5 kWh (small home)"
+msgstr "5 kWh (छोटा घर)"
+
+#: app/templates/index.html:189
+msgid "10 kWh (recommended)"
+msgstr "10 kWh (अनुशंसित)"
+
+#: app/templates/index.html:191
+msgid "20 kWh (larger home)"
+msgstr "20 kWh (बड़ा घर)"
+
+#: app/templates/index.html:193
+msgid "~₹9,000 per kWh (LFP). Improves self-consumption & backup."
+msgstr "~₹9,000 प्रति kWh (LFP)। सेल्फ-कंजम्पशन और बैकअप में सुधार करता है।"
+
+#: app/templates/index.html:206
+msgid "Your rooftop snapshot"
+msgstr "आपकी छत का सारांश"
+
+#: app/templates/index.html:207
+msgid "Estimated solar system"
+msgstr "अनुमानित सोलर सिस्टम"
+
+#: app/templates/index.html:215
+msgid "Estimated Monthly Savings"
+msgstr "अनुमानित मासिक बचत"
+
+#: app/templates/index.html:217
+#, python-format
+msgid "up to 90%% off on electricity bills"
+msgstr "बिजली बिलों पर 90%% तक की छूट"
+
+#: app/templates/index.html:231
+msgid "Annual Generation"
+msgstr "वार्षिक उत्पादन"
+
+#: app/templates/index.html:239
+msgid "CO2 Reduction"
+msgstr "CO2 में कमी"
+
+#: app/templates/index.html:247
+msgid "System Size"
+msgstr "सिस्टम साइज़"
+
+#: app/templates/index.html:255
+msgid "Payback Period"
+msgstr "पेबैक अवधि"
+
+#: app/templates/index.html:263
+msgid "Investment & Payback"
+msgstr "निवेश और पेबैक"
+
+#: app/templates/index.html:265
+msgid "Estimated System Cost"
+msgstr "अनुमानित सिस्टम लागत"
+
+#: app/templates/index.html:266
+msgid "PM Surya Ghar Subsidy"
+msgstr "PM Surya Ghar सब्सिडी"
+
+#: app/templates/index.html:267
+msgid "Your Net Investment"
+msgstr "आपका शुद्ध निवेश"
+
+#: app/templates/index.html:273
+msgid "View Full Report"
+msgstr "पूरी रिपोर्ट देखें"
+
+#: app/templates/index.html:277
+msgid "Crunching irradiance data, orientation & storage options…"
+msgstr "इरेडिएंस डेटा, ओरिएंटेशन और स्टोरेज विकल्पों की गणना हो रही है…"
+
+#: app/templates/login.html:7 app/templates/signup.html:7
+msgid "SIGNIX account"
+msgstr "SIGNIX खाता"
+
+#: app/templates/login.html:9
+msgid "Continue to your rooftop solar estimates."
+msgstr "अपने रूफटॉप सोलर अनुमानों पर जारी रखें।"
+
+#: app/templates/login.html:22
+msgid "New here?"
+msgstr "यहाँ नए हैं?"
+
+#: app/templates/login.html:22
+msgid "Create an account"
+msgstr "खाता बनाएं"
+
+#: app/templates/profile.html:7
+msgid "Account settings"
+msgstr "खाता सेटिंग्स"
+
+#: app/templates/profile.html:9
+msgid "Manage your SIGNIX account details and password."
+msgstr "अपने SIGNIX खाते का विवरण और पासवर्ड प्रबंधित करें।"
+
+#: app/templates/profile.html:20
+msgid "Signed in as"
+msgstr "इस रूप में साइन इन:"
+
+#: app/templates/profile.html:25
+msgid "Account created"
+msgstr "खाता बनाया गया"
+
+#: app/templates/profile.html:33
+msgid "Edit Profile"
+msgstr "प्रोफ़ाइल संपादित करें"
+
+#: app/templates/profile.html:34
+msgid "Keep your account information up to date."
+msgstr "अपनी खाता जानकारी अद्यतन रखें।"
+
+#: app/templates/profile.html:46
+msgid "Change Password"
+msgstr "पासवर्ड बदलें"
+
+#: app/templates/profile.html:47
+msgid "Use a strong password you do not reuse elsewhere."
+msgstr "एक मज़बूत पासवर्ड उपयोग करें जिसे आप कहीं और उपयोग न करें।"
+
+#: app/templates/report.html:32
+msgid "Download PDF"
+msgstr "PDF डाउनलोड करें"
+
+#: app/templates/savings.html:7
+msgid "Your solar portfolio"
+msgstr "आपका सोलर पोर्टफोलियो"
+
+#: app/templates/savings.html:8
+msgid "Savings overview"
+msgstr "बचत का अवलोकन"
+
+#: app/templates/savings.html:9
+msgid ""
+"See the combined financial and environmental value of your saved "
+"estimates."
+msgstr "अपने सहेजे गए अनुमानों का कुल वित्तीय और पर्यावरणीय मूल्य देखें।"
+
+#: app/templates/savings.html:15
+msgid "Your savings story starts with an estimate"
+msgstr "आपकी बचत की कहानी एक अनुमान से शुरू होती है"
+
+#: app/templates/savings.html:16
+msgid ""
+"Run and save your first rooftop estimate to see your potential savings "
+"here."
+msgstr ""
+"यहां अपनी संभावित बचत देखने के लिए अपना पहला रूफटॉप अनुमान चलाएं और "
+"सहेजें।"
+
+#: app/templates/savings.html:23
+msgid "Total potential monthly savings"
+msgstr "कुल संभावित मासिक बचत"
+
+#: app/templates/savings.html:25
+msgid "potential savings per year"
+msgstr "प्रति वर्ष संभावित बचत"
+
+#: app/templates/savings.html:35
+msgid "CO2 reduction"
+msgstr "CO2 में कमी"
+
+#: app/templates/savings.html:37
+#, python-format
+msgid "Across %(count)s saved estimate(s)"
+msgstr "%(count)s सहेजे गए अनुमानों में"
+
+#: app/templates/savings.html:41
+msgid "Equivalent trees"
+msgstr "समकक्ष पेड़"
+
+#: app/templates/savings.html:43
+msgid "CO2 absorption equivalent"
+msgstr "CO2 अवशोषण के समान"
+
+#: app/templates/savings.html:47
+msgid "Distance avoided"
+msgstr "बची हुई दूरी"
+
+#: app/templates/savings.html:49
+msgid "Car travel equivalent"
+msgstr "कार यात्रा के समान"
+
+#: app/templates/savings.html:53
+msgid "Fuel saved"
+msgstr "बचा हुआ ईंधन"
+
+#: app/templates/savings.html:55
+msgid "Petrol equivalent"
+msgstr "पेट्रोल के समान"
+
+#: app/templates/savings.html:62
+msgid "Best opportunity"
+msgstr "सबसे अच्छा अवसर"
+
+#: app/templates/savings.html:64
+msgid "The saved location with the highest potential monthly savings."
+msgstr "सबसे अधिक संभावित मासिक बचत वाला सहेजा गया स्थान।"
+
+#: app/templates/savings.html:68
+msgid "years"
+msgstr "वर्ष"
+
+#: app/templates/savings.html:69
+msgid "View report"
+msgstr "रिपोर्ट देखें"
+
+#: app/templates/settings.html:7
+msgid "Estimate defaults"
+msgstr "अनुमान डिफ़ॉल्ट"
+
+#: app/templates/settings.html:9
+msgid "Save the values you use most often for new solar estimates."
+msgstr "नए सोलर अनुमानों के लिए अपने सबसे अधिक उपयोग किए जाने वाले मान सहेजें।"
+
+#: app/templates/settings.html:20
+msgid "Default Estimate Values"
+msgstr "डिफ़ॉल्ट अनुमान मान"
+
+#: app/templates/settings.html:21
+msgid "These values will be pre-filled whenever you start a new estimate."
+msgstr "जब भी आप नया अनुमान शुरू करेंगे, ये मान पहले से भरे होंगे।"
+
+#: app/templates/signup.html:9
+msgid "Save estimates and keep your solar plans together."
+msgstr "अनुमान सहेजें और अपनी सोलर योजनाओं को एक साथ रखें।"
+
+#: app/templates/signup.html:19
+msgid "Already registered?"
+msgstr "पहले से पंजीकृत हैं?"
+
+#~ msgid "Save up to 90%"
+#~ msgstr ""
+
+#~ msgid "up to 90% off on electricity bills"
+#~ msgstr ""
+
+#~ msgid "Welcome to"
+#~ msgstr ""
+
+#~ msgid "Get your rooftop solar estimate in under"
+#~ msgstr ""
+
+#~ msgid "minutes"
+#~ msgstr ""
+

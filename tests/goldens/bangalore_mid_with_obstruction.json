@@ -1,0 +1,420 @@
+{
+  "case": "bangalore_mid_with_obstruction",
+  "description": "Mid-size Bangalore roof with obstruction polygon, bill-offset 100%",
+  "inputs": {
+    "battery_kwh": 0,
+    "coordinates": [
+      [
+        12.9716,
+        77.5946
+      ],
+      [
+        12.9716,
+        77.595
+      ],
+      [
+        12.972,
+        77.595
+      ],
+      [
+        12.972,
+        77.5946
+      ],
+      [
+        12.9716,
+        77.5946
+      ]
+    ],
+    "inverter_preference": "auto",
+    "latitude": 12.9716,
+    "longitude": 77.5946,
+    "monthly_bill": 4000,
+    "needs_backup": false,
+    "obstructions": [
+      [
+        [
+          12.9717,
+          77.5947
+        ],
+        [
+          12.9717,
+          77.59485
+        ],
+        [
+          12.97185,
+          77.59485
+        ],
+        [
+          12.97185,
+          77.5947
+        ],
+        [
+          12.9717,
+          77.5947
+        ]
+      ]
+    ],
+    "orientation": "auto",
+    "property_type": "residential",
+    "sizing_mode": "bill_offset_100%",
+    "tariff_per_kwh": 7.8,
+    "user_priority": "no_preference"
+  },
+  "irradiance_fixture": {
+    "confidence": "high",
+    "monthly_psh": {
+      "Apr": 5.2,
+      "Aug": 5.2,
+      "Dec": 5.2,
+      "Feb": 5.2,
+      "Jan": 5.2,
+      "Jul": 5.2,
+      "Jun": 5.2,
+      "Mar": 5.2,
+      "May": 5.2,
+      "Nov": 5.2,
+      "Oct": 5.2,
+      "Sep": 5.2
+    },
+    "monthly_temp_c": {
+      "Apr": 28.0,
+      "Aug": 28.0,
+      "Dec": 28.0,
+      "Feb": 28.0,
+      "Jan": 28.0,
+      "Jul": 28.0,
+      "Jun": 28.0,
+      "Mar": 28.0,
+      "May": 28.0,
+      "Nov": 28.0,
+      "Oct": 28.0,
+      "Sep": 28.0
+    },
+    "source": "nasa_power"
+  },
+  "output": {
+    "annual_generation": 5010.0,
+    "annual_om": 4290.0,
+    "annual_savings": 21492.9,
+    "battery_cost": 0.0,
+    "battery_kwh": 0.0,
+    "bill_sizing": {
+      "daily_units": 17.09,
+      "energy_model_kw": 4.27,
+      "monthly_bill": 4000.0,
+      "monthly_units": 512.8,
+      "monthly_units_per_kw": 135.0,
+      "peak_sun_hours": 5.0,
+      "performance_ratio": 0.8,
+      "raw_kw": 3.8,
+      "recommended_kw": 5.5,
+      "recommended_max_kw": 6.0,
+      "recommended_min_kw": 5.5,
+      "sizing_note": "Preliminary only. Final design must check monthly production, roof layout, inverter limits, shade, export/net-metering and DISCOM rules.",
+      "tariff_per_kwh": 7.8
+    },
+    "capacity_factor": 10.4,
+    "cashflow_25yr": [
+      -258007.1,
+      -235766.25,
+      -212751.41,
+      -188935.66,
+      -164291.12,
+      -138788.95,
+      -112399.31,
+      -85091.31,
+      -56832.98,
+      -27591.27,
+      2668.05,
+      33980.4,
+      66382.42,
+      99912.03,
+      134608.47,
+      170512.34,
+      207665.67,
+      246111.94,
+      285896.13,
+      327064.82,
+      369666.17,
+      413750.05,
+      459368.06,
+      506573.57,
+      555421.83
+    ],
+    "co2_reduction_tons": 7.7,
+    "cost_per_kw": 65000,
+    "daily_units_per_kw_range": [
+      4.0,
+      5.5
+    ],
+    "dc_note": "System size is DC kWp. AC output depends on PR, irradiance and grid availability.",
+    "emi": {
+      "annual_rate_pct": 10.0,
+      "covers_emi": false,
+      "monthly_emi": 5938.55,
+      "monthly_savings": 1791.07,
+      "net_after_emi": -4147.48,
+      "principal": 279500.0,
+      "tenure_years": 5,
+      "total_interest": 76813.0,
+      "total_payment": 356313.0
+    },
+    "environmental_equivalents": {
+      "fuel_liters_saved": 3333,
+      "km_not_driven": 64167,
+      "trees_planted": 367
+    },
+    "export_value": 0.0,
+    "exported_kwh": 2254.5,
+    "feed_in_tariff": 3.0,
+    "financing_snapshot": {
+      "disclaimer": "Indicative EMI using standard reducing-balance math. Actual rates, eligibility, and tenure depend on your bank or NBFC. Indicative only \u2014 verify with DISCOM / vendor / lender.",
+      "emi_high": {
+        "annual_rate_pct": 12.0,
+        "monthly_emi": 9283.4,
+        "tenure_years": 3
+      },
+      "emi_low": {
+        "annual_rate_pct": 8.0,
+        "monthly_emi": 4356.35,
+        "tenure_years": 7
+      },
+      "emi_mid": {
+        "annual_rate_pct": 10.0,
+        "monthly_emi": 5938.55,
+        "tenure_years": 5
+      },
+      "interest_range_pct": [
+        8.0,
+        12.0
+      ],
+      "label": "Informational financing ranges only \u2014 not a loan offer or partnership product.",
+      "monthly_savings": 1791.07,
+      "principal": 279500.0,
+      "tenure_range_years": [
+        3,
+        7
+      ]
+    },
+    "inverter": {
+      "advantages": [
+        "Lower installation cost",
+        "Higher efficiency",
+        "Government subsidy eligibility",
+        "Low maintenance"
+      ],
+      "best_for": "Homes with stable electricity supply; users focused on reducing bills",
+      "subsidy_eligible": true,
+      "type": "On-Grid"
+    },
+    "inverter_type": "On-Grid",
+    "irradiance_confidence": "high",
+    "irradiance_source": "nasa_power",
+    "lcoe": 2.37,
+    "lifetime_kwh": 118015.0,
+    "load_profile": "flat",
+    "load_profile_label": "Flat / mixed",
+    "load_profile_note": "Mixed residential profile \u2014 historical SIGNIX default (~55% self-consumption without storage).",
+    "monthly_data": {
+      "Apr": 411.8,
+      "Aug": 425.5,
+      "Dec": 425.5,
+      "Feb": 384.3,
+      "Jan": 425.5,
+      "Jul": 425.5,
+      "Jun": 411.8,
+      "Mar": 425.5,
+      "May": 425.5,
+      "Nov": 411.8,
+      "Oct": 425.5,
+      "Sep": 411.8
+    },
+    "monthly_savings": 1791.07,
+    "needs_backup": false,
+    "net_investment": 279500.0,
+    "net_metering_mode": "full_offset",
+    "nominal_payback_years": 10.9,
+    "obstructed_area_sqm": 271.1,
+    "orientation_deg": 90.0,
+    "orientation_factor": 0.653,
+    "orientation_label": "East",
+    "orientation_source": "auto-detect",
+    "panel_count": 11,
+    "panel_estimate": {
+      "label": "approximately 11 panels",
+      "module_wattage_w": 545.0,
+      "note": "Based on 545 W modules \u2014 indicative count only, not a layout.",
+      "panel_count": 11
+    },
+    "payback_years": 10.9,
+    "peak_sun_hours_assumed": 5.0,
+    "performance_ratio": 0.8,
+    "planning_notes": [
+      "kWp is DC capacity; usable energy is in kWh (units). Larger kWp does not provide backup unless hybrid/off-grid with battery.",
+      "Grid-tied on-grid inverters normally shut down during a utility outage (anti-islanding).",
+      "Performance ratio ~0.75\u20130.85 includes temperature, dust, mismatch, wiring and inverter losses.",
+      "Indicative generation ~4\u20135.5 units/day per kWp on suitable days; shade and orientation matter.",
+      "Residential installed cost often ~\u20b955,000\u201385,000/kW; commercial EPC ~\u20b935,000\u201350,000/kW at scale.",
+      "Subsidy, net-metering and DISCOM approval are required before treating savings as certain.",
+      "O&M and module cleaning should be budgeted annually; panel degradation ~0.5%/year assumed in cashflow.",
+      "Electricity tariff is assumed to escalate ~4%/year in the nominal 25-year cashflow; simple payback uses a flat year-1 tariff."
+    ],
+    "property_type": "residential",
+    "recommended_tilt_deg": 13.0,
+    "roof_area_sqm": 1927.81,
+    "roof_capacity_kw": 165.67,
+    "rule_of_thumb_annual_units": 8910.0,
+    "rule_of_thumb_monthly_units": 742.5,
+    "self_consumption_frac": 0.55,
+    "sensitivity": {
+      "discount_rate_pct": 8.0,
+      "note": "Indicative sensitivity only \u2014 not a Monte Carlo. NPV discounts escalated/degraded bill savings at 8%/yr.",
+      "rows": [
+        {
+          "base": {
+            "annual_savings": 21492.9,
+            "net_investment": 279500.0,
+            "npv_8pct": 32711.52,
+            "simple_payback_years": 13.0
+          },
+          "driver": "Generation \u00b110%",
+          "high": {
+            "annual_savings": 23642.19,
+            "net_investment": 279500.0,
+            "npv_8pct": 63932.67,
+            "simple_payback_years": 11.8
+          },
+          "high_label": "+10% generation",
+          "low": {
+            "annual_savings": 19343.61,
+            "net_investment": 279500.0,
+            "npv_8pct": 1490.37,
+            "simple_payback_years": 14.4
+          },
+          "low_label": "\u221210% generation"
+        },
+        {
+          "base": {
+            "annual_savings": 21492.9,
+            "net_investment": 279500.0,
+            "npv_8pct": 32711.52,
+            "simple_payback_years": 13.0
+          },
+          "driver": "Tariff \u00b1\u20b92/kWh",
+          "high": {
+            "annual_savings": 27003.9,
+            "net_investment": 279500.0,
+            "npv_8pct": 112765.76,
+            "simple_payback_years": 10.4
+          },
+          "high_label": "\u20b910/kWh",
+          "low": {
+            "annual_savings": 15981.9,
+            "net_investment": 279500.0,
+            "npv_8pct": -47342.72,
+            "simple_payback_years": 17.5
+          },
+          "low_label": "\u20b96/kWh"
+        },
+        {
+          "base": {
+            "annual_savings": 21492.9,
+            "net_investment": 279500.0,
+            "npv_8pct": 32711.52,
+            "simple_payback_years": 13.0
+          },
+          "driver": "System cost \u00b110%",
+          "high": {
+            "annual_savings": 21492.9,
+            "net_investment": 315250.0,
+            "npv_8pct": -3038.48,
+            "simple_payback_years": 14.7
+          },
+          "high_label": "+10% cost",
+          "low": {
+            "annual_savings": 21492.9,
+            "net_investment": 243750.0,
+            "npv_8pct": 68461.52,
+            "simple_payback_years": 11.3
+          },
+          "low_label": "\u221210% cost"
+        }
+      ]
+    },
+    "simple_payback_years": 13.0,
+    "sizing": {
+      "constraints": [
+        "Roof area",
+        "Inverter DC/AC ratio (final design)"
+      ],
+      "max_kw": 50.0,
+      "min_kw": 5.5,
+      "mode": "bill_offset_100%",
+      "rationale": [
+        "Sized to offset ~100% of monthly bill (~512.8 units/month)"
+      ],
+      "recommended_kw": 5.5
+    },
+    "sizing_method": "bill_offset_100%",
+    "specific_yield": 911.0,
+    "subsidy_amount": 78000.0,
+    "suitability_rating": {
+      "data_confidence": {
+        "score": 100,
+        "tier": "high"
+      },
+      "factors": {
+        "backup_capability": {
+          "score": 10
+        },
+        "co2_reduction": {
+          "score": 100,
+          "tier": "excellent",
+          "tons": 7.7
+        },
+        "financial_viability": {
+          "ratio": 0.335,
+          "score": 75,
+          "tier": "good"
+        },
+        "orientation": {
+          "factor": 0.653,
+          "score": 50,
+          "tier": "fair"
+        },
+        "payback": {
+          "score": 50,
+          "tier": "fair"
+        },
+        "roof_fit": {
+          "score": 50,
+          "tier": "fair",
+          "usable_area_per_kw": 301.22
+        }
+      },
+      "overall_viability": {
+        "score": 60,
+        "tier": "fair"
+      },
+      "rating_algorithm_version": "1.0",
+      "top_limiting_factor": "Limited backup capability",
+      "top_positive_factor": "High estimated CO\u2082 reduction",
+      "user_priority": "no_preference",
+      "weights": {
+        "backup_capability": 10,
+        "co2_reduction": 15,
+        "financial_viability": 25,
+        "orientation": 10,
+        "payback": 25,
+        "roof_fit": 15
+      }
+    },
+    "system_cost": 357500.0,
+    "system_cost_high": 467500.0,
+    "system_cost_low": 302500.0,
+    "system_size": 5.5,
+    "tariff_escalation_pct": 4.0,
+    "temperature_derating_applied": true,
+    "usable_area_sqm": 1656.71
+  }
+}

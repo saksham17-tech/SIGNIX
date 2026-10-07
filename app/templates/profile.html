@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Profile') }} · SIGNIX{% endblock %}
+{% block content %}
+<section class="profile-page">
+  <div class="profile-header">
+    <div>
+      <p class="eyebrow">{{ _('Account settings') }}</p>
+      <h1>{{ _('Profile') }}</h1>
+      <p>{{ _('Manage your SIGNIX account details and password.') }}</p>
+    </div>
+  </div>
+  {% with messages = get_flashed_messages() %}
+    {% for message in messages %}
+      <p class="form-success profile-alert">{{ message }}</p>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="profile-summary">
+    <div>
+      <span class="profile-summary-label">{{ _('Signed in as') }}</span>
+      <strong>{{ current_user.display_name }}</strong>
+      <span class="profile-summary-email">{{ current_user.email }}</span>
+    </div>
+    <div class="profile-summary-stats">
+      <div><span>{{ _('Account created') }}</span><strong>{{ current_user.created_at.strftime("%B %d, %Y") }}</strong></div>
+      <div><span>{{ _('Saved locations') }}</span><strong>{{ location_count }}</strong></div>
+    </div>
+  </div>
+
+  <div class="profile-grid">
+    <section class="profile-card">
+      <div class="profile-card-heading">
+        <h2>{{ _('Edit Profile') }}</h2>
+        <p>{{ _('Keep your account information up to date.') }}</p>
+      </div>
+      <form method="post" class="profile-form">
+        {{ profile_form.hidden_tag() }}
+        <p class="profile-field">{{ profile_form.display_name.label }} {{ profile_form.display_name(class_="auth-input") }} {% for error in profile_form.display_name.errors %}<span class="form-error">{{ error }}</span>{% endfor %}</p>
+        <p class="profile-field">{{ profile_form.email.label }} {{ profile_form.email(class_="auth-input") }} {% for error in profile_form.email.errors %}<span class="form-error">{{ error }}</span>{% endfor %}</p>
+        <p class="profile-submit">{{ profile_form.submit(class_="btn-primary-lg") }}</p>
+      </form>
+    </section>
+
+    <section class="profile-card">
+      <div class="profile-card-heading">
+        <h2>{{ _('Change Password') }}</h2>
+        <p>{{ _('Use a strong password you do not reuse elsewhere.') }}</p>
+      </div>
+      <form method="post" class="profile-form">
+        {{ password_form.hidden_tag() }}
+        <p class="profile-field">{{ password_form.current_password.label }} {{ password_form.current_password(class_="auth-input") }} {% for error in password_form.current_password.errors %}<span class="form-error">{{ error }}</span>{% endfor %}</p>
+        <p class="profile-field">{{ password_form.new_password.label }} {{ password_form.new_password(class_="auth-input") }} {% for error in password_form.new_password.errors %}<span class="form-error">{{ error }}</span>{% endfor %}</p>
+        <p class="profile-field">{{ password_form.confirm_new_password.label }} {{ password_form.confirm_new_password(class_="auth-input") }} {% for error in password_form.confirm_new_password.errors %}<span class="form-error">{{ error }}</span>{% endfor %}</p>
+        <p class="profile-submit">{{ password_form.submit(class_="btn-primary-lg") }}</p>
+      </form>
+    </section>
+  </div>
+</section>
+{% endblock %}

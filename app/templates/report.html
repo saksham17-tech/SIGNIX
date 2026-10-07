@@ -1,0 +1,798 @@
+{% extends "base.html" %}
+{% from "_suitability_rating.html" import rating_display %}
+{% block title %}SIGNIX — Detailed Report{% endblock %}
+
+{% block content %}
+<section class="report-header">
+  <div>
+    <h1>Detailed Report</h1>
+    <p class="address">{{ loc.address }}</p>
+    {% set conf = loc.irradiance_confidence or (loc.suitability_rating.data_confidence.tier if loc.suitability_rating and loc.suitability_rating.data_confidence else none) %}
+    {% set conf_class = 'data-conf-high' if conf == 'high' else 'data-conf-medium' if conf == 'medium' else 'data-conf-low' if conf == 'low' else 'data-conf-unknown' %}
+    <div style="margin-top:10px;">
+      {% if loc.irradiance_source %}
+      <span class="data-source-badge {{ conf_class }}">
+        {% if loc.irradiance_source == 'nasa_power' %}Data: NASA POWER
+        {% elif loc.irradiance_source == 'pvgis' %}Data: PVGIS
+        {% elif loc.irradiance_source in ('mock', 'mock_fallback') %}Data: Mock
+        {% else %}Data: {{ loc.irradiance_source }}{% endif %}
+        {% if conf == 'high' %} · High confidence
+        {% elif conf == 'medium' %} · Medium confidence
+        {% elif conf == 'low' %} · Low confidence — verify locally
+        {% endif %}
+      </span>
+      {% endif %}
+      {% if loc.orientation_label %}
+      <span class="orientation-badge">🧭 {{ loc.orientation_label }}
+        {% if loc.orientation_deg is not none %}({{ loc.orientation_deg }}°){% endif %}
+      </span>
+      {% endif %}
+      {% if loc.battery_kwh and loc.battery_kwh > 0 %}
+      <span class="battery-badge">🔋 {{ loc.battery_kwh }} kWh battery</span>
+      {% endif %}
+      {% if loc.inverter_type %}
+      <span class="orientation-badge">⚡ {{ loc.inverter_type }} inverter</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="pdf-download-group">
+    <a class="btn btn-secondary" href="{{ url_for('pages.download_pdf', location_id=loc.id, mode='summary') }}">{{ _('Download homeowner summary') }}</a>
+    <a class="btn btn-secondary" href="{{ url_for('pages.download_pdf', location_id=loc.id, mode='full') }}">{{ _('Download full technical PDF') }}</a>
+    <a class="btn btn-primary" href="{{ url_for('pages.download_installer_package', location_id=loc.id) }}">{{ _('Download installer-ready package') }}</a>
+  </div>
+  <p class="installer-export-note">
+    {{ _('Share this package with any installer of your choice — GeoJSON roof outline, key metrics, and PDF summary. SIGNIX stays vendor-neutral and does not send your details to partner installers.') }}
+  </p>
+
+  <div class="clone-scenario-panel" id="clone-scenario-panel" data-location-id="{{ loc.id }}">
+    <h3>{{ _('Duplicate estimate → change one variable') }}</h3>
+    <p class="clone-help">{{ _('Re-run this roof with a single change, then compare both scenarios side-by-side.') }}</p>
+    <div class="clone-controls">
+      <label>
+        {{ _('Change') }}
+        <select id="clone-change">
+          <option value="sizing_mode">{{ _('Sizing mode') }}</option>
+          <option value="bill_offset">{{ _('Bill offset %%') }}</option>
+          <option value="needs_backup">{{ _('Toggle backup / battery') }}</option>
+        </select>
+      </label>
+      <label id="clone-value-mode-wrap">
+        {{ _('New sizing mode') }}
+        <select id="clone-value-mode">
+          <option value="roof_max">{{ _('Roof max') }}</option>
+          <option value="bill_offset_80%">{{ _('Bill offset 80%%') }}</option>
+          <option value="bill_offset_100%">{{ _('Bill offset 100%%') }}</option>
+          <option value="fastest_payback">{{ _('Fastest payback') }}</option>
+          <option value="max_25yr_savings">{{ _('Max 25yr savings') }}</option>
+        </select>
+      </label>
+      <label id="clone-value-offset-wrap" class="hidden">
+        {{ _('Bill offset percent') }}
+        <input type="number" id="clone-value-offset" min="20" max="100" step="10" value="80">
+      </label>
+      <label id="clone-value-backup-wrap" class="hidden">
+        {{ _('Need backup') }}
+        <select id="clone-value-backup">
+          <option value="true">{{ _('Yes — auto-size battery') }}</option>
+          <option value="false">{{ _('No battery') }}</option>
+        </select>
+      </label>
+      <button type="button" class="btn-primary-lg" id="clone-run-btn">{{ _('Clone & compare') }}</button>
+    </div>
+    <p id="clone-status" class="clone-status hidden" role="status"></p>
+  </div>
+</section>
+
+<section class="savings-banner">
+  <span class="label">Estimated Monthly Savings</span>
+  <span class="value" data-orientation-monthly-savings>₹{{ '{:,.0f}'.format(loc.monthly_savings or 0) }}</span>
+  <span class="sub">
+    {% if loc.payback_years %}Payback ~{{ loc.payback_years }} years{% else %}Indicative estimate{% endif %}
+    {% if loc.self_consumption_frac %} · {{ (loc.self_consumption_frac * 100)|int }}% self-consumed{% endif %}
+  </span>
+  <span class="monetary-disclaimer">{{ monetary_disclaimer }}</span>
+</section>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">System Sizing</button>
+  <button class="tab-btn" data-tab="generation">Energy Forecasting</button>
+  <button class="tab-btn" data-tab="financial">Financing Options</button>
+  <button class="tab-btn" data-tab="capex-dpa">CAPEX vs DPA</button>
+  <button class="tab-btn" data-tab="environmental">Environmental</button>
+  <button class="tab-btn" data-tab="next-steps">{{ _('Next steps') }}</button>
+</nav>
+
+
+<section id="tab-overview" class="tab-panel active">
+  {{ rating_display(loc.suitability_rating, 'report') }}
+
+  <!-- 3D rooftop preview + customization -->
+  {% set pc = loc.panel_count or (loc.extras.panel_estimate.panel_count if loc.extras and loc.extras.panel_estimate else none) %}
+  {% set roof_area = loc.roof_area_sqm or loc.usable_area_sqm or 0 %}
+  {% set usable_area = loc.usable_area_sqm or loc.roof_area_sqm or 0 %}
+  <div class="viz-3d-card signix-roof-card" id="viz-3d-card">
+    <div class="roof3d-toolbar">
+      <div>
+        <div class="roof3d-kicker">ROOFTOP VISUALIZATION</div>
+        <h3>See your solar system on the selected roof</h3>
+        <p>Location-specific 3D roof reconstruction when geographic elevation data is available; your drawn boundary remains the final selection.</p>
+      </div>
+      <div class="roof3d-controls">
+        <label class="roof3d-control-label" for="roof-shape-select">Roof type</label>
+        <select id="roof-shape-select" class="roof-pitch-select" aria-label="Roof type">
+          <option value="flat">Flat</option>
+          <option value="gable">Gable</option>
+          <option value="hip">Hip</option>
+          <option value="shed">Shed</option>
+        </select>
+        <label class="roof3d-control-label" for="roof-pitch-select">Pitch</label>
+        <select id="roof-pitch-select" class="roof-pitch-select" aria-label="Roof pitch">
+          <option value="0">0°</option>
+          <option value="5">5°</option>
+          <option value="10">10°</option>
+          <option value="15">15°</option>
+          <option value="20">20°</option>
+          <option value="25">25°</option>
+          <option value="30">30°</option>
+          <option value="35">35°</option>
+          <option value="40">40°</option>
+        </select>
+        <button type="button" class="btn btn-secondary roof3d-site-button" id="roof-site-btn">⌂ Build actual site roof</button><button type="button" class="btn btn-secondary roof3d-ai-button" id="roof-ai-btn">✨ AI analyze structures</button>
+        <button type="button" class="btn btn-secondary roof3d-apply-button" id="roof-ai-apply-btn" disabled>Apply detected structures</button>
+        <button type="button" class="btn btn-secondary roof3d-undo-button" id="roof-undo-btn">Undo</button>
+      </div>
+    </div>
+
+    <div class="roof3d-stage" id="roof3d-stage">
+      <div id="roof-3d-container" class="roof3d-canvas-wrap">
+        <div class="roof3d-skyline"></div>
+        <div class="roof3d-compass" aria-label="Solar orientation control">
+          <div class="roof3d-compass-ring">
+            <span class="c-n">N</span><span class="c-ne">NE</span><span class="c-e">E</span>
+            <span class="c-se">SE</span><span class="c-s">S</span><span class="c-sw">SW</span>
+            <span class="c-w">W</span><span class="c-nw">NW</span>
+            <i class="roof3d-sun" role="button" aria-label="Solar orientation handle">●</i>
+          </div>
+        </div>
+        <div class="roof3d-orientation-pill"><strong id="roof3d-orientation">Solar orientation</strong><span id="roof3d-orientation-detail">Panels follow the selected roof plane</span><small id="roof3d-orientation-factor"></small><small id="roof3d-orientation-delta"></small></div>
+        <div id="roof-3d-panel-status" class="roof3d-status-pill">Building panel layout…</div>
+        <div id="roof-ai-status" class="roof3d-ai-status">AI roof analysis pending…</div>
+        <div id="roof3d-satellite-badge" class="roof3d-satellite-badge">Satellite reference · loading</div><div id="roof3d-shade-badge" class="roof3d-shade-badge" aria-live="polite">Shade analysis · waiting</div><div class="roof3d-orientation-actions"><button type="button" id="roof3d-orientation-apply" class="roof3d-orientation-action" disabled>Apply orientation</button><button type="button" id="roof3d-orientation-undo" class="roof3d-orientation-action secondary">Reset</button></div>
+        <div id="roof-3d-fallback" class="hidden roof3d-fallback">3D preview unavailable on this device. Your roof area and system sizing remain available below.</div>
+      </div>
+      <div class="roof3d-instruction"><span class="roof3d-drag-icon">↻</span> Drag to inspect the roof <span>•</span> Scroll to zoom <span>•</span> <span class="roof3d-azimuth-help">Drag the compass to change solar orientation</span> <span>•</span> Panels use physical module dimensions</div>
+    </div>
+
+    <div class="roof3d-metrics">
+      <div class="roof3d-metric"><span>Roof area</span><strong>{{ '%.0f'|format(roof_area|float) }} <small>m²</small></strong></div>
+      <div class="roof3d-metric"><span>Usable area</span><strong>{{ '%.0f'|format(usable_area|float) }} <small>m²</small></strong></div>
+      <div class="roof3d-metric"><span>PV modules</span><strong id="roof3d-module-count">{{ pc or 0 }}</strong></div>
+      <div class="roof3d-metric"><span>System size</span><strong>{{ loc.system_size or 0 }} <small>kW</small></strong></div>
+      <div class="roof3d-metric roof3d-metric-accent"><span>Estimated generation</span><strong><span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation or 0) }}</span> <small>kWh/yr</small></strong></div>
+    </div>
+
+    <p class="roof3d-disclaimer">
+      Your drawn rooftop boundary remains authoritative. AI is used to estimate roof type, pitch and visible structures; it does not silently change your saved financial estimate.
+      <span id="roof-ai-details">AI analysis is advisory.</span>
+    </p>
+  </div>
+
+  <!-- Dial-style customization controls (PRD §3.2) -->
+  <div class="dial-panel" id="dial-panel">
+    <h3 style="margin:0 0 12px;font-size:15px;color:var(--purple-dark);">Customize inputs</h3>
+    <p class="emi-help" style="margin-top:0;">Adjust dials to explore impact on system size and indicative generation. Values scale from this saved estimate (indicative).</p>
+    <div class="dial-grid">
+      <div class="dial-card" data-dial="system_size">
+        <span class="dial-title">System Size</span>
+        <div class="dial-control">
+          <button type="button" class="dial-btn dial-minus" aria-label="Decrease">−</button>
+          <div class="dial-readout"><strong id="dial-system-size">{{ loc.system_size }}</strong><small>kW</small></div>
+          <button type="button" class="dial-btn dial-plus" aria-label="Increase">+</button>
+        </div>
+        <input type="range" class="dial-range" id="range-system-size" min="1" max="{{ [(loc.roof_capacity_kw or loc.system_size or 10)|float * 1.2, (loc.system_size or 5)|float * 1.5, 15]|max|int }}" step="0.5" value="{{ loc.system_size }}">
+      </div>
+      <div class="dial-card" data-dial="roof_area">
+        <span class="dial-title">Roof Area</span>
+        <div class="dial-control">
+          <button type="button" class="dial-btn dial-minus" aria-label="Decrease">−</button>
+          <div class="dial-readout"><strong id="dial-roof-area">{{ loc.usable_area_sqm or loc.roof_area_sqm or 0 }}</strong><small>m²</small></div>
+          <button type="button" class="dial-btn dial-plus" aria-label="Increase">+</button>
+        </div>
+        <input type="range" class="dial-range" id="range-roof-area" min="10" max="{{ [((loc.usable_area_sqm or loc.roof_area_sqm or 50)|float * 1.5)|int, 200]|max }}" step="5" value="{{ loc.usable_area_sqm or loc.roof_area_sqm or 50 }}">
+      </div>
+      <div class="dial-card" data-dial="daytime_pct">
+        <span class="dial-title">Daytime Consumption</span>
+        <div class="dial-control">
+          <button type="button" class="dial-btn dial-minus" aria-label="Decrease">−</button>
+          <div class="dial-readout"><strong id="dial-daytime-pct">{{ ((loc.self_consumption_frac or 0.75) * 100)|int }}</strong><small>%</small></div>
+          <button type="button" class="dial-btn dial-plus" aria-label="Increase">+</button>
+        </div>
+        <input type="range" class="dial-range" id="range-daytime-pct" min="20" max="100" step="5" value="{{ ((loc.self_consumption_frac or 0.75) * 100)|int }}">
+      </div>
+      <div class="dial-card" data-dial="shading">
+        <span class="dial-title">Shading loss</span>
+        <div class="dial-control">
+          <button type="button" class="dial-btn dial-minus" aria-label="Decrease">−</button>
+          <div class="dial-readout"><strong id="dial-shading">0</strong><small>%</small></div>
+          <button type="button" class="dial-btn dial-plus" aria-label="Increase">+</button>
+        </div>
+        <input type="range" class="dial-range" id="range-shading" min="0" max="40" step="5" value="0">
+      </div>
+      {% if loc.bill_sizing %}
+      <div class="dial-card" data-dial="units">
+        <span class="dial-title">Units Consumed</span>
+        <div class="dial-control">
+          <button type="button" class="dial-btn dial-minus" aria-label="Decrease">−</button>
+          <div class="dial-readout"><strong id="dial-units">{{ loc.bill_sizing.monthly_units }}</strong><small>kWh</small></div>
+          <button type="button" class="dial-btn dial-plus" aria-label="Increase">+</button>
+        </div>
+        <input type="range" class="dial-range" id="range-units" min="50" max="{{ [(loc.bill_sizing.monthly_units|float * 2)|int, 500]|max }}" step="10" value="{{ loc.bill_sizing.monthly_units }}">
+      </div>
+      <div class="dial-card" data-dial="tariff">
+        <span class="dial-title">Tariff</span>
+        <div class="dial-control">
+          <button type="button" class="dial-btn dial-minus" aria-label="Decrease">−</button>
+          <div class="dial-readout"><strong id="dial-tariff">{{ loc.bill_sizing.tariff_per_kwh }}</strong><small>₹/u</small></div>
+          <button type="button" class="dial-btn dial-plus" aria-label="Increase">+</button>
+        </div>
+        <input type="range" class="dial-range" id="range-tariff" min="3" max="15" step="0.25" value="{{ loc.bill_sizing.tariff_per_kwh }}">
+      </div>
+      {% endif %}
+    </div>
+    <div class="dial-impact stat-grid" style="margin-top:14px;">
+      <div class="stat-card"><span class="label">Indicative annual gen.</span><span class="value" id="dial-impact-gen"><span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation or 0) }}</span> kWh</span></div>
+      <div class="stat-card"><span class="label">Indicative monthly savings</span><span class="value" id="dial-impact-savings">₹{{ '{:,.0f}'.format(loc.monthly_savings or 0) }}</span></div>
+      <div class="stat-card"><span class="label">Approx. panels</span><span class="value" id="dial-impact-panels">{% set pc = loc.panel_count or (loc.extras.panel_estimate.panel_count if loc.extras and loc.extras.panel_estimate else none) %}{{ pc or '—' }}</span></div>
+    </div>
+    <p class="monetary-disclaimer" style="margin-top:8px;">Indicative only — dial changes scale from this estimate; run a new estimate for a full DISCOM-grade recalculation.</p>
+  </div>
+
+
+  <div class="area-breakdown-card">
+    <div class="area-row"><span>Total Roof Area</span><span>{{ loc.roof_area_sqm }} m²</span></div>
+    <div class="area-row obstructed"><span>Obstructed Area (tanks, rooms, coverings)</span><span>-{{ loc.obstructed_area_sqm or 0 }} m²</span></div>
+    <div class="area-row total"><span>Usable Area</span><span>{{ loc.usable_area_sqm }} m²</span></div>
+  </div>
+
+
+  {% if loc.bill_sizing %}
+  <div class="area-breakdown-card" style="margin-top:14px;">
+    <div class="area-row"><span>Monthly bill (input)</span><span>₹{{ '{:,.0f}'.format(loc.bill_sizing.monthly_bill) }}</span></div>
+    <div class="area-row"><span>Est. consumption @ ₹{{ loc.bill_sizing.tariff_per_kwh }}/unit</span><span>{{ loc.bill_sizing.monthly_units }} units</span></div>
+    <div class="area-row"><span>Bill-based recommendation</span><span>{{ loc.bill_sizing.recommended_min_kw }}–{{ loc.bill_sizing.recommended_max_kw }} kW</span></div>
+    <div class="area-row"><span>Roof capacity (from drawing)</span><span>{{ loc.roof_capacity_kw or loc.system_size }} kW</span></div>
+    <div class="area-row total"><span>Final system size</span><span>{{ loc.system_size }} kW</span></div>
+  </div>
+  {% endif %}
+
+  <div class="stat-grid" style="margin-top:14px;">
+    <div class="stat-card"><span class="label">System Size</span><span class="value">{{ loc.system_size }} kW</span>
+      {% set pc = loc.panel_count or (loc.extras.panel_estimate.panel_count if loc.extras and loc.extras.panel_estimate else none) %}
+      {% if pc %}<span class="metric-sub">approximately {{ pc }} panels</span>{% endif %}
+    </div>
+    <div class="stat-card"><span class="label">Annual Generation</span><span class="value"><span data-orientation-annual-generation>{{ loc.annual_generation }}</span> kWh</span></div>
+    <div class="stat-card"><span class="label">Monthly Savings</span><span class="value">₹{{ '{:,.0f}'.format(loc.monthly_savings or 0) }}</span><span class="monetary-disclaimer">{{ monetary_disclaimer }}</span></div>
+    <div class="stat-card">
+      <span class="label">{{ _('Nominal payback') }} <small style="font-weight:500;color:var(--gray);">(tariff escalates)</small></span>
+      <span class="value">
+        {% set nom = (loc.extras or {}).get('nominal_payback_years', loc.payback_years) %}
+        {% if nom %}{{ nom }} yrs{% else %}—{% endif %}
+      </span>
+      <span class="metric-sub">
+        {{ _('Simple payback') }} (flat tariff):
+        {% set simp = (loc.extras or {}).get('simple_payback_years') %}
+        {% if simp %}{{ simp }} yrs{% elif loc.payback_years %}{{ loc.payback_years }} yrs{% else %}—{% endif %}
+      </span>
+      <span class="monetary-disclaimer">{{ monetary_disclaimer }}</span>
+    </div>
+  </div>
+
+  {% if loc.inverter %}
+  <h3 style="margin:20px 0 10px;font-size:15px;color:var(--purple-dark);">Recommended Inverter — {{ loc.inverter.type }}</h3>
+  <div class="area-breakdown-card">
+    <div class="area-row"><span>Best for</span><span style="text-align:right;max-width:60%;">{{ loc.inverter.best_for }}</span></div>
+    <div class="area-row"><span>Subsidy eligibility</span><span>{% if loc.inverter.subsidy_eligible %}Eligible (typical){% else %}Usually not eligible{% endif %}</span></div>
+  </div>
+  <ul style="font-size:13px;color:var(--gray);margin:10px 0 0 18px;line-height:1.5;">
+    {% for a in loc.inverter.advantages %}
+    <li>{{ a }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h3 style="margin:20px 0 10px;font-size:15px;color:var(--purple-dark);">Performance Indicators</h3>
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <span class="kpi-value">{% if loc.specific_yield %}{{ '{:,.0f}'.format(loc.specific_yield) }}{% else %}—{% endif %}</span>
+      <span class="kpi-label">Specific Yield<br>kWh/kWp/year</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-value">{% if loc.capacity_factor %}{{ loc.capacity_factor }}%{% else %}—{% endif %}</span>
+      <span class="kpi-label">Capacity Factor</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-value">{% if loc.orientation_factor %}{{ (loc.orientation_factor * 100)|round|int }}%{% else %}—{% endif %}</span>
+      <span class="kpi-label">Orientation Factor<br>vs South</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-value">{% if loc.recommended_tilt_deg %}{{ loc.recommended_tilt_deg }}°{% else %}—{% endif %}</span>
+      <span class="kpi-label">Recommended Tilt<br>(≈ latitude)</span>
+    </div>
+    {% if loc.lcoe %}
+    <div class="kpi-card">
+      <span class="kpi-value">₹{{ loc.lcoe }}</span>
+      <span class="kpi-label">LCOE<br>₹/kWh (25 yr)</span>
+    </div>
+    {% endif %}
+    {% if loc.lifetime_kwh %}
+    <div class="kpi-card">
+      <span class="kpi-value">{{ '{:,.0f}'.format(loc.lifetime_kwh) }}</span>
+      <span class="kpi-label">Lifetime Energy<br>kWh (25 yr)</span>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if loc.battery_kwh and loc.battery_kwh > 0 %}
+  <div class="area-breakdown-card" style="margin-top:16px;">
+    <div class="area-row"><span>Battery Capacity</span><span>{{ loc.battery_kwh }} kWh</span></div>
+    <div class="area-row"><span>Battery Cost (est.)</span><span>₹{{ '{:,.0f}'.format(loc.battery_cost or 0) }}</span></div>
+    <div class="area-row total"><span>Self-consumption share</span><span>{{ ((loc.self_consumption_frac or 0.55) * 100)|int }}%</span></div>
+  </div>
+  {% endif %}
+
+  <div class="assumptions-box">
+    <strong>Key assumptions (India planning guide, Aug 2026)</strong><br>
+    • Bill path: ≈ ₹10/unit · ≈ 135 units/month per kW (~4–5.5 units/day/kWp on suitable days)<br>
+    • Energy check: daily units ÷ (peak sun hours × PR); PR ≈ {{ loc.performance_ratio or 0.80 }} · PSH ≈ {{ loc.peak_sun_hours_assumed or 5 }} h<br>
+    • Final size = min(bill recommendation, roof capacity) when bill is entered · ≈ 10 m² usable roof per kWp<br>
+    • PM Surya Ghar: ₹30,000/kW for first 2 kW + ₹18,000 for the 2–3 kW step · max ₹78,000 · Off-grid / non-residential = 0<br>
+    • Installed cost band: residential ~₹55k–85k/kW (estimate uses mid); commercial EPC often ~₹35k–50k/kW<br>
+    {% if loc.system_cost_low and loc.system_cost_high %}• This system cost band: ₹{{ '{:,.0f}'.format(loc.system_cost_low) }} – ₹{{ '{:,.0f}'.format(loc.system_cost_high) }} (excl. unusual civil/structure)<br>{% endif %}
+    {% if loc.annual_om %}• Indicative annual O&amp;M reserve ≈ ₹{{ '{:,.0f}'.format(loc.annual_om) }} (~1.2% of system cost)<br>{% endif %}
+    • Orientation factor applied · recommended tilt ≈ latitude ({{ loc.recommended_tilt_deg or '—' }}°)<br>
+    {% if loc.battery_kwh and loc.battery_kwh > 0 %}• Battery ≈ ₹9,000/kWh (LFP); nominal size ≠ usable energy (DoD × efficiency)<br>{% endif %}
+    • 0.5%/yr degradation · tariff escalates ~{{ (loc.extras or {}).get('tariff_escalation_pct', 4) }}%/yr in nominal cashflow · simple payback uses flat year-1 tariff · not a licensed design or DISCOM quote
+  </div>
+
+  {% if loc.planning_notes %}
+  <div class="assumptions-box" style="margin-top:12px;border-left-color:var(--orange);">
+    <strong>Important practical points</strong>
+    <ul style="margin:8px 0 0 16px;padding:0;">
+      {% for n in loc.planning_notes %}
+      <li style="margin-bottom:4px;">{{ n }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</section>
+
+<section id="tab-generation" class="tab-panel">
+  <h2>Monthly Energy Generation (Year 1)</h2>
+  <p style="font-size:13px;color:var(--gray);margin-top:0;">
+    Adjusted for roof orientation
+    {% if loc.orientation_label %}({{ loc.orientation_label }}){% endif %}
+    {% if loc.orientation_factor %} · factor {{ loc.orientation_factor }}{% endif %}.
+  </p>
+  <div class="stat-grid" style="margin-bottom:14px;">
+    <div class="stat-card"><span class="label">Annual generation</span><span class="value"><span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation or 0) }}</span> kWh</span></div>
+    <div class="stat-card"><span class="label">System size</span><span class="value">{{ loc.system_size }} kW</span></div>
+    <div class="stat-card"><span class="label">Specific yield</span><span class="value">{% if loc.specific_yield %}{{ '{:,.0f}'.format(loc.specific_yield) }}{% else %}—{% endif %} kWh/kWp</span></div>
+    <div class="stat-card"><span class="label">Lifetime energy (25 yr)</span><span class="value">{% if loc.lifetime_kwh %}{{ '{:,.0f}'.format(loc.lifetime_kwh) }}{% else %}—{% endif %} kWh</span></div>
+  </div>
+  <div class="chart-card">
+    <canvas id="monthlyGenerationChart" height="120"></canvas>
+    <p id="monthly-chart-empty" class="hidden" style="font-size:13px;color:var(--gray);padding:12px 0;">Monthly breakdown not available for this estimate.</p>
+  </div>
+
+  <h2 style="margin-top:28px;">25-Year Generation Forecast</h2>
+  <p style="font-size:13px;color:var(--gray);margin-top:0;">
+    Includes panel degradation (~0.5%/year). Bars trend gently downward.
+  </p>
+  <div class="chart-card">
+    <canvas id="generation25yrChart" height="140"></canvas>
+    <p id="gen25-chart-empty" class="hidden" style="font-size:13px;color:var(--gray);padding:12px 0;">25-year series will appear after charts load.</p>
+  </div>
+</section>
+
+
+
+<section id="tab-financial" class="tab-panel">
+  <h2>Financial Summary</h2>
+  <div class="chart-card">
+    <canvas id="financialDonutChart" height="180"></canvas>
+  </div>
+  <div class="financial-summary-box" style="margin-top:14px;">
+    <div class="fin-row"><span>PV System Cost (mid estimate)</span><span>₹{{ '{:,.0f}'.format(loc.system_cost or 0) }}</span></div>
+    {% if loc.system_cost_low and loc.system_cost_high %}
+    <div class="fin-row"><span>Typical cost band</span><span>₹{{ '{:,.0f}'.format(loc.system_cost_low) }} – ₹{{ '{:,.0f}'.format(loc.system_cost_high) }}</span></div>
+    {% endif %}
+    {% if loc.battery_cost and loc.battery_cost > 0 %}
+    <div class="fin-row"><span>Battery Storage Cost</span><span>₹{{ '{:,.0f}'.format(loc.battery_cost) }}</span></div>
+    {% endif %}
+    <div class="fin-row"><span>PM Surya Ghar Subsidy</span><span>-₹{{ '{:,.0f}'.format(loc.subsidy_amount or 0) }}</span></div>
+    <p class="subsidy-caveat">{{ subsidy_caveat }}</p>
+    <p class="subsidy-eligibility-assumption">{{ subsidy_eligibility_assumption }}</p>
+    <div class="fin-row total"><span>Net Investment</span><span>₹{{ '{:,.0f}'.format(loc.net_investment or 0) }}</span></div>
+    <div class="fin-row"><span>{{ _('Nominal payback') }} <small>(escalating tariff)</small></span><span>{% set nom = (loc.extras or {}).get('nominal_payback_years', loc.payback_years) %}{% if nom %}{{ nom }} yrs{% else %}—{% endif %}</span></div>
+    <div class="fin-row"><span>{{ _('Simple payback') }} <small>(flat tariff)</small></span><span>{% set simp = (loc.extras or {}).get('simple_payback_years') %}{% if simp %}{{ simp }} yrs{% else %}—{% endif %}</span></div>
+    <div class="fin-row"><span>Est. 25-year bill savings</span><span>₹{{ '{:,.0f}'.format((loc.monthly_savings or 0) * 12 * 25) }}</span></div>
+    {% if loc.lcoe %}
+    <div class="fin-row"><span>Levelised cost of energy</span><span>₹{{ loc.lcoe }}/kWh</span></div>
+    {% endif %}
+    <p class="monetary-disclaimer">{{ monetary_disclaimer }}</p>
+  </div>
+
+  {% set emi = (loc.extras or {}).get('emi') if loc.extras else None %}
+  {% if emi %}
+  <div class="emi-panel" id="emi-panel">
+    <h2>{{ _('Loan EMI (indicative)') }}</h2>
+    <p class="emi-help">
+      {{ _('Principal = net investment. Default shown: 5 years @ 10%% p.a. (adjustable range 3–7 years, 8–12%%).') }}
+    </p>
+    <div class="emi-grid">
+      <div class="emi-card">
+        <span class="emi-label">{{ _('Monthly EMI') }}</span>
+        <strong>₹{{ '{:,.0f}'.format(emi.monthly_emi or 0) }}</strong>
+      </div>
+      <div class="emi-card">
+        <span class="emi-label">{{ _('Monthly bill savings') }}</span>
+        <strong>₹{{ '{:,.0f}'.format(loc.monthly_savings or 0) }}</strong>
+      </div>
+      <div class="emi-card {% if emi.covers_emi %}emi-positive{% else %}emi-caution{% endif %}">
+        <span class="emi-label">{{ _('Savings − EMI') }}</span>
+        <strong>₹{{ '{:,.0f}'.format(emi.net_after_emi or 0) }}</strong>
+        <small>
+          {% if emi.covers_emi %}
+            {{ _('Loan appears covered by estimated bill savings') }}
+          {% else %}
+            {{ _('Bill savings may not fully cover EMI at these terms') }}
+          {% endif %}
+        </small>
+      </div>
+    </div>
+    <p class="emi-meta">
+      {{ _('Tenure') }}: {{ emi.tenure_years }} {{ _('years') }} ·
+      {{ _('Rate') }}: {{ emi.annual_rate_pct }}% ·
+      {{ _('Total interest') }}: ₹{{ '{:,.0f}'.format(emi.total_interest or 0) }}
+    </p>
+    <p class="monetary-disclaimer">{{ monetary_disclaimer }}</p>
+
+    {% set fin = (loc.extras or {}).get('financing_snapshot') if loc.extras else none %}
+    {% if fin %}
+    <div class="financing-snapshot" id="financing-snapshot">
+      <h3>{{ _('Financing snapshot') }} <span class="info-pill">{{ _('Informational only') }}</span></h3>
+      <p class="emi-help">{{ fin.label }}</p>
+      <p class="emi-meta">
+        {{ _('Interest range') }}: {{ fin.interest_range_pct[0]|int }}–{{ fin.interest_range_pct[1]|int }}%
+        · {{ _('Tenure range') }}: {{ fin.tenure_range_years[0] }}–{{ fin.tenure_range_years[1] }} {{ _('years') }}
+      </p>
+      <div class="emi-grid financing-grid">
+        <div class="emi-card">
+          <span class="emi-label">{{ _('Lower EMI end') }}</span>
+          <strong>₹{{ '{:,.0f}'.format(fin.emi_low.monthly_emi or 0) }}</strong>
+          <small>{{ fin.emi_low.annual_rate_pct }}% · {{ fin.emi_low.tenure_years }} {{ _('yrs') }}</small>
+        </div>
+        <div class="emi-card">
+          <span class="emi-label">{{ _('Typical midpoint') }}</span>
+          <strong>₹{{ '{:,.0f}'.format(fin.emi_mid.monthly_emi or 0) }}</strong>
+          <small>{{ fin.emi_mid.annual_rate_pct }}% · {{ fin.emi_mid.tenure_years }} {{ _('yrs') }}</small>
+        </div>
+        <div class="emi-card">
+          <span class="emi-label">{{ _('Higher EMI end') }}</span>
+          <strong>₹{{ '{:,.0f}'.format(fin.emi_high.monthly_emi or 0) }}</strong>
+          <small>{{ fin.emi_high.annual_rate_pct }}% · {{ fin.emi_high.tenure_years }} {{ _('yrs') }}</small>
+        </div>
+      </div>
+      <p class="checklist-disclaimer">{{ fin.disclaimer }}</p>
+      <p class="monetary-disclaimer">{{ monetary_disclaimer }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% set sensitivity = (loc.extras or {}).get('sensitivity') if loc.extras else None %}
+  {% if sensitivity and sensitivity.rows %}
+  <div class="sensitivity-panel" id="sensitivity-panel">
+    <h2>{{ _('Sensitivity (indicative)') }}</h2>
+    <p class="emi-help">{{ sensitivity.note }}</p>
+    <div class="comparison-scroll">
+      <table class="comparison-table sensitivity-table">
+        <thead>
+          <tr>
+            <th>{{ _('Driver') }}</th>
+            <th>{{ _('Downside payback') }}</th>
+            <th>{{ _('Base payback') }}</th>
+            <th>{{ _('Upside payback') }}</th>
+            <th>{{ _('Downside NPV') }}</th>
+            <th>{{ _('Base NPV') }}</th>
+            <th>{{ _('Upside NPV') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in sensitivity.rows %}
+          <tr>
+            <th>
+              {{ row.driver }}
+              <div class="metric-sub">{{ row.low_label }} · {{ row.high_label }}</div>
+            </th>
+            <td>{% if row.low.simple_payback_years %}{{ row.low.simple_payback_years }} yrs{% else %}—{% endif %}</td>
+            <td>{% if row.base.simple_payback_years %}{{ row.base.simple_payback_years }} yrs{% else %}—{% endif %}</td>
+            <td>{% if row.high.simple_payback_years %}{{ row.high.simple_payback_years }} yrs{% else %}—{% endif %}</td>
+            <td>₹{{ '{:,.0f}'.format(row.low.npv_8pct or 0) }}</td>
+            <td>₹{{ '{:,.0f}'.format(row.base.npv_8pct or 0) }}</td>
+            <td>₹{{ '{:,.0f}'.format(row.high.npv_8pct or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="monetary-disclaimer">{{ monetary_disclaimer }}</p>
+  </div>
+  {% endif %}
+
+  <h2>Cashflow Over 25 Years</h2>
+  <p style="font-size:12px;color:var(--gray);">Includes 0.5%/yr degradation and assumed tariff escalation in the nominal projection.</p>
+  <div class="chart-card">
+    <canvas id="cashflowChart" height="140"></canvas>
+  </div>
+</section>
+
+<section id="tab-capex-dpa" class="tab-panel">
+  <h2>CAPEX vs DPA Comparison</h2>
+  <p class="emi-help">
+    Side-by-side cash purchase (CAPEX) versus Deferred Payment Agreement / loan (DPA).
+    Adjust down-payment % and tenure below to see live updates (client-side).
+    PPA column deferred pending market data.
+  </p>
+
+  {% set fc = (loc.extras or {}).get('financing_comparison') if loc.extras else loc.get('financing_comparison') if loc is mapping else none %}
+  {% if not fc %}{% set fc = loc.financing_comparison if loc.financing_comparison is defined else none %}{% endif %}
+
+  {% if fc %}
+  <div class="financing-controls" id="financing-controls" style="display:flex;gap:20px;flex-wrap:wrap;margin:14px 0 18px;">
+    <label style="display:flex;flex-direction:column;font-size:13px;">
+      Down-payment %
+      <input type="range" id="dpa-down-pct" min="0" max="50" step="5" value="{{ fc.assumptions.down_payment_pct|int }}" style="width:180px;">
+      <span id="dpa-down-pct-label">{{ fc.assumptions.down_payment_pct|int }}%</span>
+    </label>
+    <label style="display:flex;flex-direction:column;font-size:13px;">
+      DPA Tenure (years)
+      <input type="range" id="dpa-tenure" min="3" max="7" step="1" value="{{ fc.assumptions.dpa_tenure_years }}" style="width:180px;">
+      <span id="dpa-tenure-label">{{ fc.assumptions.dpa_tenure_years }} yrs</span>
+    </label>
+    <label style="display:flex;flex-direction:column;font-size:13px;">
+      Interest rate %
+      <input type="range" id="dpa-rate" min="8" max="12" step="0.5" value="{{ fc.assumptions.dpa_rate_pct }}" style="width:180px;">
+      <span id="dpa-rate-label">{{ fc.assumptions.dpa_rate_pct }}%</span>
+    </label>
+  </div>
+
+  <div class="comparison-scroll">
+    <table class="comparison-table" id="financing-comparison-table">
+      <thead>
+        <tr>
+          <th>Particulars</th>
+          <th>CAPEX (Cash)</th>
+          <th>DPA (Loan)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>Down payment</th>
+          <td id="fc-capex-dp">₹{{ '{:,.0f}'.format(fc.capex.down_payment or 0) }}</td>
+          <td id="fc-dpa-dp">₹{{ '{:,.0f}'.format(fc.dpa.down_payment or 0) }}</td>
+        </tr>
+        <tr>
+          <th>Loan amount</th>
+          <td>—</td>
+          <td id="fc-dpa-loan">₹{{ '{:,.0f}'.format(fc.dpa.loan_amount or 0) }}</td>
+        </tr>
+        <tr>
+          <th>Tenure</th>
+          <td>—</td>
+          <td id="fc-dpa-tenure">{{ fc.dpa.tenure_years }} years</td>
+        </tr>
+        <tr>
+          <th>Interest rate</th>
+          <td>—</td>
+          <td id="fc-dpa-rate">{{ fc.dpa.annual_rate_pct }}% p.a.</td>
+        </tr>
+        <tr>
+          <th>Monthly EMI</th>
+          <td>—</td>
+          <td id="fc-dpa-emi">₹{{ '{:,.0f}'.format(fc.dpa.monthly_emi or 0) }}</td>
+        </tr>
+        <tr>
+          <th>Payback period</th>
+          <td id="fc-capex-payback">{% if fc.capex.payback_years %}{{ fc.capex.payback_years }} yrs{% else %}—{% endif %}</td>
+          <td id="fc-dpa-payback">{% if fc.dpa.payback_years %}{{ fc.dpa.payback_years }} yrs{% else %}—{% endif %}</td>
+        </tr>
+        <tr>
+          <th>Equity IRR</th>
+          <td id="fc-capex-irr">{% if fc.capex.equity_irr_pct is not none %}{{ fc.capex.equity_irr_pct }}%{% else %}—{% endif %}</td>
+          <td id="fc-dpa-irr">{% if fc.dpa.equity_irr_pct is not none %}{{ fc.dpa.equity_irr_pct }}%{% else %}—{% endif %}</td>
+        </tr>
+        <tr>
+          <th>Total cash outflow</th>
+          <td id="fc-capex-out">₹{{ '{:,.0f}'.format(fc.capex.total_cash_outflow or 0) }}</td>
+          <td id="fc-dpa-out">₹{{ '{:,.0f}'.format(fc.dpa.total_cash_outflow or 0) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="checklist-disclaimer" style="margin-top:10px;">{{ fc.assumptions.note }}</p>
+  <p class="monetary-disclaimer">{{ monetary_disclaimer }}</p>
+
+  <h3 style="margin-top:22px;">Cash outflow vs savings (25 years)</h3>
+  <canvas id="financingComparisonChart" height="140"></canvas>
+  {% else %}
+  <p>Financing comparison data is not available for this estimate. Re-run the estimate to generate it.</p>
+  {% endif %}
+</section>
+
+<section id="tab-environmental" class="tab-panel">
+  <h2>Environmental Impact</h2>
+  <div class="stat-grid">
+    <div class="stat-card"><span class="label">CO₂ Reduction / Year</span><span class="value">-{{ loc.co2_reduction_tons }} Tons</span></div>
+    <div class="stat-card"><span class="label">Per kW Reference</span><span class="value">1.4 Tons/kW/Year</span></div>
+  </div>
+
+  <div class="equivalents-grid">
+    <div class="equivalent-card">
+      <span class="emoji">🌳</span>
+      <span class="value">~{{ loc.environmental_equivalents.trees_planted }} Trees</span>
+      <span class="label">Equivalent to planting</span>
+    </div>
+    <div class="equivalent-card">
+      <span class="emoji">🚗</span>
+      <span class="value">~{{ '{:,}'.format(loc.environmental_equivalents.km_not_driven) }} Km</span>
+      <span class="label">Equivalent to not driving</span>
+    </div>
+    <div class="equivalent-card">
+      <span class="emoji">⛽</span>
+      <span class="value">~{{ loc.environmental_equivalents.fuel_liters_saved }} L Fuel</span>
+      <span class="label">Equivalent to saving</span>
+    </div>
+  </div>
+  <div class="green-banner">Be a part of a cleaner &amp; greener India 🌱 — Every rooftop counts.</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+
+<section id="tab-next-steps" class="tab-panel">
+  <h2>{{ _('Application checklist') }}</h2>
+  {% set checklist = loc.application_checklist %}
+  {% if checklist and checklist.steps %}
+  <p class="checklist-intro">
+    {{ _('Guided steps for') }}
+    <strong>{{ checklist.state or _('your state') }}</strong>
+    · {{ '%.1f'|format(checklist.system_size_kw or loc.system_size or 0) }} kW
+    · {{ checklist.property_type or 'residential' }}.
+  </p>
+  <ol class="app-checklist">
+    {% for step in checklist.steps %}
+    <li class="app-checklist-item {% if step.required %}required{% else %}optional{% endif %}">
+      <div class="app-checklist-title">{{ step.title }}</div>
+      <p class="app-checklist-detail">{{ step.detail }}</p>
+      {% if step.link %}
+      <a class="app-checklist-link" href="{{ step.link.url }}" target="_blank" rel="noopener noreferrer">
+        {{ step.link.name }} ↗
+      </a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% if checklist.national_portal %}
+  <p class="checklist-portals">
+    <a href="{{ checklist.national_portal.url }}" target="_blank" rel="noopener noreferrer">{{ checklist.national_portal.name }}</a>
+    {% if checklist.state_portal %}
+    · <a href="{{ checklist.state_portal.url }}" target="_blank" rel="noopener noreferrer">{{ checklist.state_portal.name }}</a>
+    {% endif %}
+  </p>
+  {% endif %}
+  <p class="checklist-disclaimer">{{ checklist.disclaimer }}</p>
+  {% else %}
+  <p>{{ _('Checklist unavailable for this estimate.') }}</p>
+  {% endif %}
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  const MONTHLY_DATA = {{ loc.monthly_data | tojson }};
+  const SYSTEM_SIZE = {{ loc.system_size | tojson }};
+  const ANNUAL_GENERATION = {{ (loc.annual_generation or 0) | tojson }};
+  const NET_INVESTMENT = {{ loc.net_investment | tojson }};
+  const ANNUAL_SAVINGS = {{ ((loc.monthly_savings or 0) * 12) | tojson }};
+  const MONTHLY_SAVINGS = {{ (loc.monthly_savings or 0) | tojson }};
+  const SUBSIDY_AMOUNT = {{ (loc.subsidy_amount or 0) | tojson }};
+  const TOTAL_25YR_SAVINGS = {{ ((loc.monthly_savings or 0) * 12 * 25) | tojson }};
+  const BATTERY_COST = {{ (loc.battery_cost or 0) | tojson }};
+  const GENERATION_25YR = {{ (loc.generation_25yr or (loc.extras or {}).get('generation_25yr') or []) | tojson }};
+  const FINANCING_COMPARISON = {{ (loc.financing_comparison or (loc.extras or {}).get('financing_comparison') or none) | tojson }};
+  const CASHFLOW_25YR = {{ (loc.cashflow_25yr or (loc.extras or {}).get('cashflow_25yr') or []) | tojson }};
+  const TARIFF_ESCALATION = {{ ((loc.tariff_escalation_pct or (loc.extras or {}).get('tariff_escalation_pct') or 4) / 100) | tojson }};
+  const DEGRADATION = 0.005;
+  const ROOF_AREA_SQM = {{ (loc.usable_area_sqm or loc.roof_area_sqm or 50) | tojson }};
+  const PANEL_COUNT = {{ (loc.panel_count or (loc.extras.panel_estimate.panel_count if loc.extras and loc.extras.panel_estimate else 0) or 0) | tojson }};
+  const ORIENTATION_DEG = {{ (loc.orientation_deg if loc.orientation_deg is not none else 180) | tojson }};
+  const SIGNIX_LOCATION_ID = {{ loc.id | tojson }};
+  const SIGNIX_LOCATION_LAT = {{ loc.latitude | tojson }};
+  const SIGNIX_LOCATION_LNG = {{ loc.longitude | tojson }};
+  // Actual drawn rooftop + obstructions (GeoJSON) for true 3D extrusion
+  const ROOF_POLYGON_GEOJSON = {{ (loc.polygon_geojson or none) | tojson }};
+  const ROOF_OBSTRUCTIONS_GEOJSON = {{ (loc.obstructions_geojson or none) | tojson }};
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const apply = document.getElementById('roof3d-orientation-apply');
+    const undo = document.getElementById('roof3d-orientation-undo');
+    if (apply) apply.addEventListener('click', function () { window.SIGNIX_ROOF3D?.applyOrientation?.(); });
+    if (undo) undo.addEventListener('click', function () { window.SIGNIX_ROOF3D?.undoOrientation?.(); });
+    const siteBtn = document.getElementById('roof-site-btn');
+    if (siteBtn) siteBtn.addEventListener('click', function () { window.SIGNIX_ROOF3D?.loadSiteRoofModel?.(); });
+  });
+</script>
+
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/roof3d.js') }}"></script>
+<script src="{{ url_for('static', filename='js/roof-ai.js') }}"></script>
+
+
+
+<script>
+(function () {
+  const panel = document.getElementById('clone-scenario-panel');
+  if (!panel) return;
+  const changeEl = document.getElementById('clone-change');
+  const modeWrap = document.getElementById('clone-value-mode-wrap');
+  const offsetWrap = document.getElementById('clone-value-offset-wrap');
+  const backupWrap = document.getElementById('clone-value-backup-wrap');
+  const status = document.getElementById('clone-status');
+  const btn = document.getElementById('clone-run-btn');
+  const locationId = panel.getAttribute('data-location-id');
+
+  function syncValueUI() {
+    const c = changeEl.value;
+    modeWrap.classList.toggle('hidden', c !== 'sizing_mode');
+    offsetWrap.classList.toggle('hidden', c !== 'bill_offset');
+    backupWrap.classList.toggle('hidden', c !== 'needs_backup');
+  }
+  changeEl.addEventListener('change', syncValueUI);
+  syncValueUI();
+
+  btn.addEventListener('click', async function () {
+    const change = changeEl.value;
+    let value;
+    if (change === 'sizing_mode') value = document.getElementById('clone-value-mode').value;
+    else if (change === 'bill_offset') value = document.getElementById('clone-value-offset').value;
+    else value = document.getElementById('clone-value-backup').value;
+
+    status.classList.remove('hidden');
+    status.textContent = 'Running alternate scenario…';
+    btn.disabled = true;
+    try {
+      const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      const res = await fetch('/api/locations/' + locationId + '/scenarios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+        body: JSON.stringify({ change: change, value: value })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data.error || ('Failed (' + res.status + ')');
+        btn.disabled = false;
+        return;
+      }
+      status.textContent = 'Scenario saved — opening compare…';
+      window.location.href = data.compare_url || data.redirect_url || '/compare';
+    } catch (err) {
+      status.textContent = 'Network error — try again.';
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+
+{% endblock %}
