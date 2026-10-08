@@ -15,6 +15,8 @@ import requests
 from flask import Blueprint, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
 
+from app.geo import canonicalize_stored_ring
+
 
 roof_model_bp = Blueprint("roof_model", __name__)
 SOLAR_BASE = "https://solar.googleapis.com/v1"
@@ -33,7 +35,9 @@ def _polygon_coords(location):
     geo = location.polygon_geojson or {}
     coords = geo.get("coordinates") if isinstance(geo, dict) else None
     if isinstance(coords, list) and coords and isinstance(coords[0], list):
-        ring = coords[0]
+        ring = canonicalize_stored_ring(
+            coords[0], location.latitude, location.longitude
+        )
         if len(ring) >= 3:
             return ring
     return None
@@ -64,15 +68,37 @@ def _solar_get(path: str, params: dict[str, Any]):
 
 
 def _bbox_from_ring(ring):
+    """Bounds for a canonical GeoJSON ``[longitude, latitude]`` ring."""
     lngs = [float(p[0]) for p in ring]
     lats = [float(p[1]) for p in ring]
     return min(lngs), min(lats), max(lngs), max(lats)
 
 
 def _centroid(ring):
-    lng = sum(float(p[0]) for p in ring[:-1] or ring) / max(1, len(ring[:-1] or ring))
-    lat = sum(float(p[1]) for p in ring[:-1] or ring) / max(1, len(ring[:-1] or ring))
+    """Return ``(latitude, longitude)`` for a canonical GeoJSON ring."""
+    points = ring[:-1] if len(ring) > 1 and ring[0] == ring[-1] else ring
+    lng = sum(float(p[0]) for p in points) / max(1, len(points))
+    lat = sum(float(p[1]) for p in points) / max(1, len(points))
     return lat, lng
+
+
+def _lnglat_to_local_meters(lng, lat, origin_lng, origin_lat):
+    """Convert WGS84 degrees to local east/north metres around an origin."""
+    north = (float(lat) - float(origin_lat)) * 111320.0
+    east = (
+        (float(lng) - float(origin_lng))
+        * 111320.0
+        * math.cos(math.radians(float(origin_lat)))
+    )
+    return east, north
+
+
+def _mask_geometry(ring):
+    """Build an EPSG:4326 GeoJSON polygon for raster masking."""
+    closed = [list(point) for point in ring]
+    if closed and closed[0] != closed[-1]:
+        closed.append(closed[0])
+    return {"type": "Polygon", "coordinates": [closed]}
 
 
 def _meters(a_lat, a_lng, b_lat, b_lng):
@@ -163,10 +189,7 @@ def _dsm_grid(location, ring, layers):
     response.raise_for_status()
     with rasterio.io.MemoryFile(response.content) as mem:
         with mem.open() as ds:
-            ring_for_mask = list(ring)
-            if ring_for_mask[0] != ring_for_mask[-1]:
-                ring_for_mask.append(ring_for_mask[0])
-            geom = {"type": "Polygon", "coordinates": [ring_for_mask]}
+            geom = _mask_geometry(ring)
             if ds.crs:
                 geom = transform_geom("EPSG:4326", ds.crs, geom, precision=8)
             data, transform = rio_mask(ds, [geom], crop=True, filled=False, all_touched=True)
@@ -214,10 +237,14 @@ def _dsm_grid(location, ring, layers):
                     lng, lat = px, py
                 lat_rows.append(lat)
             c_lat, c_lng = _centroid(ring)
-            m_lat = 111320.0
-            m_lng = 111320.0 * math.cos(math.radians(c_lat))
-            x_coords = [(lng - c_lng) * m_lng for lng in xs]
-            z_coords = [-(lat - c_lat) * m_lat for lat in lat_rows]
+            x_coords = [
+                _lnglat_to_local_meters(lng, c_lat, c_lng, c_lat)[0]
+                for lng in xs
+            ]
+            z_coords = [
+                -_lnglat_to_local_meters(c_lng, lat, c_lng, c_lat)[1]
+                for lat in lat_rows
+            ]
             return {
                 "rows": int(arr.shape[0]),
                 "cols": int(arr.shape[1]),
@@ -252,10 +279,7 @@ def _flux_grid(location, ring, layers):
     response.raise_for_status()
     with rasterio.io.MemoryFile(response.content) as mem:
         with mem.open() as ds:
-            ring_for_mask = list(ring)
-            if ring_for_mask[0] != ring_for_mask[-1]:
-                ring_for_mask.append(ring_for_mask[0])
-            geom = {"type": "Polygon", "coordinates": [ring_for_mask]}
+            geom = _mask_geometry(ring)
             if ds.crs:
                 geom = transform_geom("EPSG:4326", ds.crs, geom, precision=8)
             data, transform = rio_mask(ds, [geom], crop=True, filled=False, all_touched=True)
@@ -277,8 +301,6 @@ def _flux_grid(location, ring, layers):
             # materially shaded/low-sun zone for panel placement.
             threshold = 0.65
             c_lat, c_lng = _centroid(ring)
-            m_lat = 111320.0
-            m_lng = 111320.0 * math.cos(math.radians(c_lat))
             transformer = None
             if ds.crs:
                 from pyproj import Transformer
@@ -287,12 +309,14 @@ def _flux_grid(location, ring, layers):
             for c in range(arr.shape[1]):
                 px, py = transform * (c * step + 0.5 * step, 0.5 * step)
                 lng, lat = transformer.transform(px, py) if transformer else (px, py)
-                xs.append((lng-c_lng)*m_lng)
+                east, _ = _lnglat_to_local_meters(lng, lat, c_lng, c_lat)
+                xs.append(east)
             zs=[]
             for r in range(arr.shape[0]):
                 px, py = transform * (0.5 * step, r * step + 0.5 * step)
                 lng, lat = transformer.transform(px, py) if transformer else (px, py)
-                zs.append(-(lat-c_lat)*m_lat)
+                _, north = _lnglat_to_local_meters(lng, lat, c_lng, c_lat)
+                zs.append(-north)
             low_x=[]; low_z=[]
             for r in range(arr.shape[0]):
                 for c in range(arr.shape[1]):
@@ -366,10 +390,10 @@ def roof_model(location_id):
             sw, ne = bb.get("sw") or {}, bb.get("ne") or {}
             if all(k in sw for k in ("latitude", "longitude")) and all(k in ne for k in ("latitude", "longitude")):
                 item["footprint"] = [
-                    [float(sw["latitude"]), float(sw["longitude"])],
-                    [float(sw["latitude"]), float(ne["longitude"])],
-                    [float(ne["latitude"]), float(ne["longitude"])],
-                    [float(ne["latitude"]), float(sw["longitude"])],
+                    [float(sw["longitude"]), float(sw["latitude"])],
+                    [float(ne["longitude"]), float(sw["latitude"])],
+                    [float(ne["longitude"]), float(ne["latitude"])],
+                    [float(sw["longitude"]), float(ne["latitude"])],
                 ]
             segments.append(item)
 

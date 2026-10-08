@@ -35,13 +35,12 @@
     if (!r || r.length < 3) { if (g.coordinates.length >= 3 && typeof g.coordinates[0][0] === 'number') r = g.coordinates; else return null; }
     return r;
   }
-  function latLngRingToLocal(ring) {
+  function geoJsonRingToLocal(ring) {
     if (!ring || ring.length < 3) return null;
     var pts=[];
     ring.forEach(function(p){
       if (!p || p.length<2) return;
-      var a=Number(p[0]),b=Number(p[1]); if(!isFinite(a)||!isFinite(b))return;
-      var lat=a,lng=b; if(Math.abs(a)>90&&Math.abs(b)<=90){lng=a;lat=b;}
+      var lng=Number(p[0]),lat=Number(p[1]); if(!isFinite(lng)||!isFinite(lat))return;
       if(lat>=-90&&lat<=90&&lng>=-180&&lng<=180)pts.push({lat:lat,lng:lng});
     });
     if(pts.length<3)return null;
@@ -135,7 +134,7 @@
       siteSegmentPlanes=[];
       (siteRoofModel.roof&&siteRoofModel.roof.segments||[]).forEach(function(seg){
         var fp=seg.footprint; if(!fp||fp.length<3)return;
-        var poly=latLngRingToLocal(fp); if(!poly||poly.length<3)return;
+        var poly=geoJsonRingToLocal(fp); if(!poly||poly.length<3)return;
         // Keep only the part overlapping the user's selected roof visually.
         var c=polygonCentroid(poly); if(!pointInRing(c[0],c[1],localRing))return;
         siteSegmentPlanes.push({polygon:poly,pitch:Number(seg.pitchDegrees)||0,azimuth:Number(seg.azimuthDegrees)||0,height:Number(seg.planeHeightAtCenterMeters)||0});
@@ -468,13 +467,13 @@
 
   function undoOrientation(){setOrientation(savedOrientationDeg,false);orientationDirty=false;var apply=document.getElementById('roof3d-orientation-apply');if(apply){apply.disabled=true;apply.textContent='Apply orientation';}requestOrientationPreview();}
   function updatePanelStatus(placed,requested){var e=document.getElementById('roof-3d-panel-status');var shadeText=shadeAvoidedPanels>0?' '+shadeAvoidedPanels+' candidate positions excluded for low-sun/shaded areas.':'';if(e)e.textContent=requested&&placed<requested?placed+' of '+requested+' modules fit after roof setbacks, obstructions and shade.'+shadeText:placed+' physical PV modules placed on the selected roof.'+shadeText;var c=document.getElementById('roof3d-module-count');if(c)c.textContent=String(placed||0);}
-  function parseGeometryFromGlobals(){localRing=null;localObstructions=[];var r=latLngRingToLocal(extractRing(typeof ROOF_POLYGON_GEOJSON!=='undefined'?ROOF_POLYGON_GEOJSON:null));if(r)localRing=r;var obs=typeof ROOF_OBSTRUCTIONS_GEOJSON!=='undefined'?ROOF_OBSTRUCTIONS_GEOJSON:null;if(obs&&obs.coordinates){var list=obs.type==='MultiPolygon'?obs.coordinates:[obs.coordinates];list.forEach(function(item){var loc=latLngRingToLocal(item[0]||item);if(loc&&loc.length>=3)localObstructions.push(loc);});}}
+  function parseGeometryFromGlobals(){localRing=null;localObstructions=[];var r=geoJsonRingToLocal(extractRing(typeof ROOF_POLYGON_GEOJSON!=='undefined'?ROOF_POLYGON_GEOJSON:null));if(r)localRing=r;var obs=typeof ROOF_OBSTRUCTIONS_GEOJSON!=='undefined'?ROOF_OBSTRUCTIONS_GEOJSON:null;if(obs&&obs.coordinates){var list=obs.type==='MultiPolygon'?obs.coordinates:[obs.coordinates];list.forEach(function(item){var loc=geoJsonRingToLocal(item[0]||item);if(loc&&loc.length>=3)localObstructions.push(loc);});}}
   function fitCamera(){if(!camera)return;cameraDistance=Math.max(footprintSpan*1.22,8.5);cameraAzimuth=.72;cameraElevation=.48;updateCamera();}
   function updateCamera(){if(!camera)return;var targetY=roofInfo?(roofInfo.baseY+Math.max(roofInfo.rise,0)*.34):2.0,ce=Math.cos(cameraElevation),se=Math.sin(cameraElevation);camera.position.set(Math.cos(cameraAzimuth)*ce*cameraDistance,targetY+se*cameraDistance,Math.sin(cameraAzimuth)*ce*cameraDistance);camera.lookAt(0,targetY,0);}
   function bindCameraControls(container){var dragging=false,lastX=0,lastY=0;container.addEventListener('pointerdown',function(e){dragging=true;userInteracted=true;lastX=e.clientX;lastY=e.clientY;container.setPointerCapture?.(e.pointerId);});container.addEventListener('pointermove',function(e){if(!dragging)return;var dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;cameraAzimuth-=dx*.008;cameraElevation=Math.max(.16,Math.min(1.18,cameraElevation+dy*.006));updateCamera();});['pointerup','pointercancel'].forEach(function(ev){container.addEventListener(ev,function(){dragging=false;});});container.addEventListener('wheel',function(e){e.preventDefault();userInteracted=true;cameraDistance=Math.max(Math.max(footprintSpan*.56,6.5),Math.min(Math.max(footprintSpan*2.6,26),cameraDistance*(1+e.deltaY*.0008)));updateCamera();},{passive:false});}
   function setRoofType(type){roofType=['flat','gable','hip','shed','mixed'].indexOf(type)>=0?type:'flat';buildRoofModel(currentPitch,currentPanels);}
   function applyAIAnalysis(a){if(!a||typeof a!=='object')return;aiAnalysis=a;aiStructuresApplied=false;var bbox=a.imagery_bbox;aiPlanes=[];aiObstructions=[];
-    function normToLocal(poly){if(!bbox||!Array.isArray(bbox)||bbox.length!==4)return null;var minLng=bbox[0],minLat=bbox[1],maxLng=bbox[2],maxLat=bbox[3];var latlng=poly.map(function(p){var lng=minLng+(Number(p[0])/1000)*(maxLng-minLng),lat=maxLat-(Number(p[1])/1000)*(maxLat-minLat);return[lat,lng];});return latLngRingToLocal(latlng);}
+    function normToLocal(poly){if(!bbox||!Array.isArray(bbox)||bbox.length!==4)return null;var minLng=bbox[0],minLat=bbox[1],maxLng=bbox[2],maxLat=bbox[3];var geojson=poly.map(function(p){var lng=minLng+(Number(p[0])/1000)*(maxLng-minLng),lat=maxLat-(Number(p[1])/1000)*(maxLat-minLat);return[lng,lat];});return geoJsonRingToLocal(geojson);}
     (a.roof_planes||[]).forEach(function(p){var loc=normToLocal(p.polygon||[]);if(loc&&loc.length>=3)aiPlanes.push({polygon:loc,pitch:Number(p.pitch_degrees)||0,azimuth:Number.isFinite(Number(p.azimuth_degrees))?Number(p.azimuth_degrees):null,confidence:Number(p.confidence)||0});});
     (a.obstructions||[]).forEach(function(o){var loc=normToLocal(o.polygon||[]);if(loc&&loc.length>=3)aiObstructions.push({polygon:loc,type:o.type||'detected structure',confidence:Number(o.confidence)||0,height:1.0});});
     if(a.roof_type&&a.roof_type!=='unknown'){roofType=String(a.roof_type).toLowerCase();var ss=document.getElementById('roof-shape-select');if(ss)ss.value=roofType;}

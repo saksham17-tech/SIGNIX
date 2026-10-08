@@ -32,19 +32,12 @@ All figures are indicative estimates only — verify with DISCOM / vendor.
 
 
 def _ring_to_lnglat(ring) -> List[List[float]]:
-    """GeoJSON positions are [lng, lat]. SIGNIX often stores [lat, lng]."""
+    """Validate and close a canonical GeoJSON ``[lng, lat]`` ring."""
     out = []
     for pt in ring or []:
         if not pt or len(pt) < 2:
             continue
-        a, b = float(pt[0]), float(pt[1])
-        if abs(a) <= 90 and abs(b) > 90:
-            lat, lng = a, b
-        elif abs(a) > 90 and abs(b) <= 90:
-            lat, lng = b, a
-        else:
-            # Prefer SIGNIX drawing convention [lat, lng]
-            lat, lng = a, b
+        lng, lat = float(pt[0]), float(pt[1])
         out.append([lng, lat])
     # Close ring if needed
     if out and out[0] != out[-1]:
@@ -115,12 +108,12 @@ def _obstruction_features(obstructions_geojson) -> List[Dict[str, Any]]:
 
 
 def build_roof_geojson(location) -> Dict[str, Any]:
-    poly = getattr(location, "polygon_geojson", None)
-    if poly is None and isinstance(location, dict):
-        poly = location.get("polygon_geojson")
-    obs = getattr(location, "obstructions_geojson", None)
-    if obs is None and isinstance(location, dict):
-        obs = location.get("obstructions_geojson")
+    if hasattr(location, "to_dict"):
+        location_data = location.to_dict()
+    else:
+        location_data = dict(location)
+    poly = location_data.get("polygon_geojson")
+    obs = location_data.get("obstructions_geojson")
 
     features: List[Dict[str, Any]] = []
     roof_geom = _polygon_geometry(poly)
@@ -130,9 +123,7 @@ def build_roof_geojson(location) -> Dict[str, Any]:
                 "type": "Feature",
                 "properties": {
                     "kind": "rooftop",
-                    "address": getattr(location, "address", None)
-                    if not isinstance(location, dict)
-                    else location.get("address"),
+                    "address": location_data.get("address"),
                 },
                 "geometry": roof_geom,
             }

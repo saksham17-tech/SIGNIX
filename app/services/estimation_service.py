@@ -2,6 +2,11 @@ import time
 import uuid
 
 from app.config import Config
+from app.geo import (
+    canonicalize_stored_ring,
+    geojson_ring_to_latlng,
+    leaflet_ring_to_geojson,
+)
 from app.models import db, TariffTable, UserLocation
 from app.solar_logic import run_full_estimation
 
@@ -208,9 +213,15 @@ def create_estimate(
             parent_location_id=parent_location_id,
             scenario_label=scenario_label,
             sizing_mode=resolved_mode,
-            polygon_geojson={"type": "Polygon", "coordinates": [polygon]},
+            polygon_geojson={
+                "type": "Polygon",
+                "coordinates": [leaflet_ring_to_geojson(polygon)],
+            },
             obstructions_geojson=(
-                {"type": "MultiPolygon", "coordinates": [[o] for o in obstructions]}
+                {
+                    "type": "MultiPolygon",
+                    "coordinates": [[leaflet_ring_to_geojson(o)] for o in obstructions],
+                }
                 if obstructions
                 else None
             ),
@@ -442,7 +453,10 @@ def _polygon_from_location(location):
     if not coords:
         raise InvalidEstimateInputError("Source estimate has no rooftop polygon to clone")
     ring = coords[0] if isinstance(coords[0], list) else coords
-    return ring
+    canonical = canonicalize_stored_ring(
+        ring, location.latitude, location.longitude
+    )
+    return geojson_ring_to_latlng(canonical)
 
 
 def _obstructions_from_location(location):
@@ -456,7 +470,10 @@ def _obstructions_from_location(location):
         if not poly:
             continue
         ring = poly[0] if poly and isinstance(poly[0][0], (list, tuple)) else poly
-        out.append(ring)
+        canonical = canonicalize_stored_ring(
+            ring, location.latitude, location.longitude
+        )
+        out.append(geojson_ring_to_latlng(canonical))
     return out
 
 

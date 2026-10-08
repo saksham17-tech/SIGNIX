@@ -16,7 +16,7 @@ Point = Tuple[float, float]
 
 
 def _ring_from_geojson(polygon_geojson) -> List[Point]:
-    """Extract outer ring as [(lat, lng), ...] from stored GeoJSON-ish shapes."""
+    """Extract outer ring as ``[(lat, lng), ...]`` from canonical GeoJSON."""
     if not polygon_geojson:
         return []
     if isinstance(polygon_geojson, dict):
@@ -33,13 +33,7 @@ def _ring_from_geojson(polygon_geojson) -> List[Point]:
     for pt in ring:
         if not pt or len(pt) < 2:
             continue
-        # Stored rings are [lat, lng] in SIGNIX drawing pipeline
-        a, b = float(pt[0]), float(pt[1])
-        # Heuristic: if first value looks like longitude (India ~68–98), swap
-        if abs(a) > 90 and abs(b) <= 90:
-            lat, lng = b, a
-        else:
-            lat, lng = a, b
+        lng, lat = float(pt[0]), float(pt[1])
         out.append((lat, lng))
     return out
 

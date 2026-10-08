@@ -48,16 +48,15 @@ precise structural measurements from a top-down image.
 
 
 def _bbox_from_polygon(polygon: list[list[float]], pad_ratio: float = 0.20):
+    """Return bounds for a canonical GeoJSON ``[longitude, latitude]`` ring."""
     pts = []
     for p in polygon or []:
         if len(p) < 2:
             continue
         try:
-            a, b = float(p[0]), float(p[1])
+            lng, lat = float(p[0]), float(p[1])
         except (TypeError, ValueError):
             continue
-        # SIGNIX stores drawn rings as [lat, lng].
-        lat, lng = (b, a) if abs(a) > 90 and abs(b) <= 90 else (a, b)
         if -90 <= lat <= 90 and -180 <= lng <= 180:
             pts.append((lat, lng))
     if len(pts) < 3:
@@ -139,8 +138,7 @@ def _download_imagery(bbox, polygon=None):
         for p in polygon:
             if len(p) < 2:
                 continue
-            a, b = float(p[0]), float(p[1])
-            lat, lng = (b, a) if abs(a) > 90 and abs(b) <= 90 else (a, b)
+            lng, lat = float(p[0]), float(p[1])
             px = ((lng - min_lng) / max(max_lng - min_lng, 1e-12)) * 1023
             py = ((max_lat - lat) / max(max_lat - min_lat, 1e-12)) * 1023
             pts.append((int(max(0, min(1023, px))), int(max(0, min(1023, py)))))

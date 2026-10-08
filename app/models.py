@@ -110,6 +110,35 @@ class UserLocation(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
+        from app.geo import canonicalize_stored_ring
+
+        polygon_geojson = self.polygon_geojson
+        if isinstance(polygon_geojson, dict):
+            coordinates = polygon_geojson.get("coordinates") or []
+            if coordinates:
+                polygon_geojson = dict(polygon_geojson)
+                polygon_geojson["coordinates"] = [
+                    canonicalize_stored_ring(
+                        ring, self.latitude, self.longitude
+                    )
+                    for ring in coordinates
+                ]
+
+        obstructions_geojson = self.obstructions_geojson
+        if (
+            isinstance(obstructions_geojson, dict)
+            and obstructions_geojson.get("type") == "MultiPolygon"
+        ):
+            obstructions_geojson = dict(obstructions_geojson)
+            obstructions_geojson["coordinates"] = [
+                [
+                    canonicalize_stored_ring(
+                        ring, self.latitude, self.longitude
+                    )
+                    for ring in polygon
+                ]
+                for polygon in (obstructions_geojson.get("coordinates") or [])
+            ]
         return {
             "id": self.id,
             "user_id": self.user_id,
@@ -122,8 +151,8 @@ class UserLocation(db.Model):
             "scenario_label": self.scenario_label,
             "sizing_mode": self.sizing_mode
                 or ((self.extras or {}).get("sizing_method") if isinstance(self.extras, dict) else None),
-            "polygon_geojson": self.polygon_geojson,
-            "obstructions_geojson": self.obstructions_geojson,
+            "polygon_geojson": polygon_geojson,
+            "obstructions_geojson": obstructions_geojson,
             "system_size": round(self.system_size, 2),
             "annual_generation": round(self.annual_generation, 2),
             "monthly_data": self.monthly_data,

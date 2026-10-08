@@ -37,6 +37,10 @@ def test_api_estimate_returns_estimate_for_valid_polygon(client, app):
     with app.app_context():
         location = db.session.get(UserLocation, data["location_id"])
         assert location.user_priority == "no_preference"
+        assert location.polygon_geojson["coordinates"][0][0] == [
+            77.2090,
+            28.6139,
+        ]
     solar_data_fetch.assert_called_once()
 
 
