@@ -105,6 +105,8 @@ def api_orientation_preview(location_id):
     except estimation_service.EstimationEngineError as exc:
         return jsonify({"error": f"Orientation preview failed: {exc}"}), 500
 
+    from app.services.report_chart_data import build_report_chart_data
+
     return jsonify(_json_safe({
         "orientation_deg": result.get("orientation_deg"),
         "orientation_label": result.get("orientation_label"),
@@ -113,6 +115,7 @@ def api_orientation_preview(location_id):
         "monthly_savings": result.get("monthly_savings"),
         "payback_years": result.get("payback_years"),
         "monthly_data": result.get("monthly_data"),
+        "chart_data": build_report_chart_data(result),
     }))
 
 
@@ -138,6 +141,8 @@ def api_apply_orientation(location_id):
         estimation_service.db.session.rollback()
         return jsonify({"error": f"Could not save orientation: {exc}"}), 500
 
+    from app.services.report_chart_data import build_report_chart_data
+
     return jsonify(_json_safe({
         "orientation_deg": result.get("orientation_deg"),
         "orientation_label": result.get("orientation_label"),
@@ -145,6 +150,70 @@ def api_apply_orientation(location_id):
         "annual_generation": result.get("annual_generation"),
         "monthly_savings": result.get("monthly_savings"),
         "payback_years": result.get("payback_years"),
+        "chart_data": build_report_chart_data(result),
+    }))
+
+
+def _finite_number(payload, name, minimum, maximum, *, integer=False):
+    value = payload.get(name)
+    if isinstance(value, bool):
+        raise estimation_service.InvalidEstimateInputError(f"{name} must be a number")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise estimation_service.InvalidEstimateInputError(f"{name} must be a number")
+    if not math.isfinite(number):
+        raise estimation_service.InvalidEstimateInputError(f"{name} must be finite")
+    if number < minimum or number > maximum:
+        raise estimation_service.InvalidEstimateInputError(
+            f"{name} must be between {minimum:g} and {maximum:g}"
+        )
+    if integer and not number.is_integer():
+        raise estimation_service.InvalidEstimateInputError(f"{name} must be a whole number")
+    return int(number) if integer else number
+
+
+@estimate_bp.route("/api/estimate/<int:location_id>/financing-preview", methods=["POST"])
+@login_required
+def api_financing_preview(location_id):
+    """Recalculate a report's DPA comparison without persisting assumptions."""
+    from app.services import location_service
+    from app.services.report_chart_data import build_report_chart_data
+    from app.solar_logic import build_financing_comparison
+
+    report = location_service.get_report_context(location_id, current_user.id)
+    if report is None:
+        return jsonify({"error": "Estimate not found"}), 404
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "A JSON object is required"}), 400
+    try:
+        down_payment_pct = _finite_number(payload, "down_payment_pct", 0, 100)
+        dpa_rate_pct = _finite_number(payload, "dpa_rate_pct", 0, 50)
+        dpa_tenure_years = _finite_number(
+            payload, "dpa_tenure_years", 1, 30, integer=True
+        )
+    except estimation_service.InvalidEstimateInputError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    _, context = report
+    annual_savings = context.get("annual_savings")
+    if annual_savings is None:
+        annual_savings = float(context.get("monthly_savings") or 0) * 12
+    comparison = build_financing_comparison(
+        net_investment=context.get("net_investment"),
+        annual_savings=annual_savings,
+        monthly_savings=context.get("monthly_savings"),
+        annual_generation_kwh=context.get("annual_generation"),
+        down_payment_pct=down_payment_pct,
+        dpa_tenure_years=dpa_tenure_years,
+        dpa_rate_pct=dpa_rate_pct,
+    )
+    preview_context = dict(context)
+    preview_context["financing_comparison"] = comparison
+    return jsonify(_json_safe({
+        "financing_comparison": comparison,
+        "chart_data": build_report_chart_data(preview_context),
     }))
 
 

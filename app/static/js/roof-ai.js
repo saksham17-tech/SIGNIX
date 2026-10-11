@@ -22,7 +22,10 @@
     if (button) button.disabled = true;
     setStatus('AI is inspecting the satellite view…', true);
     try {
-      const response = await fetch('/api/roof-ai/analyze', {
+      const locationId = typeof SIGNIX_LOCATION_ID !== 'undefined' ? SIGNIX_LOCATION_ID : null;
+      const response = await fetch(locationId
+        ? `/api/locations/${encodeURIComponent(locationId)}/rooftop-design/ingest`
+        : '/api/roof-ai/analyze', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
@@ -31,21 +34,31 @@
           'X-CSRFToken': csrf(),
           'X-Requested-With': 'XMLHttpRequest'
         },
-        body: JSON.stringify({ polygon })
+        body: JSON.stringify(locationId
+          ? { providers: ['gemini'] }
+          : { polygon })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'AI roof analysis failed');
-      if (!data.analysis) throw new Error('AI returned no roof analysis');
-      if (window.SIGNIX_ROOF3D?.applyAIAnalysis) {
-        window.SIGNIX_ROOF3D.applyAIAnalysis(data.analysis);
+      const geminiSource = Array.isArray(data.sources)
+        ? data.sources.find((item) => item.provider === 'gemini')
+        : null;
+      const analysis = data.analysis || geminiSource?.analysis;
+      if (!analysis) {
+        const status = geminiSource?.status || 'unavailable';
+        throw new Error(`AI roof analysis ${status.replaceAll('_', ' ')}`);
       }
-      const a = data.analysis;
+      if (window.SIGNIX_ROOF3D?.stageAIAnalysis) {
+        window.SIGNIX_ROOF3D.stageAIAnalysis(analysis);
+      }
+      const a = analysis;
       const confidence = Math.round((Number(a.confidence) || 0) * 100);
       const objects = Array.isArray(a.obstructions) ? a.obstructions.length : 0;
       const apply = document.getElementById('roof-ai-apply-btn');
       if (apply) { apply.disabled = objects === 0; apply.textContent = objects ? `Apply ${objects} detected structure${objects === 1 ? '' : 's'}` : 'No structures detected'; }
       const pitch = a.pitch_degrees != null ? `${Math.round(a.pitch_degrees)}°` : 'unknown';
-      setStatus(`AI analysis: ${a.roof_type || 'unknown'} roof · ${pitch} pitch · ${objects} visible obstruction${objects === 1 ? '' : 's'} · ${confidence}% confidence`, false);
+      const cacheNote = geminiSource?.cached ? ' · cached result' : '';
+      setStatus(`AI analysis: ${a.roof_type || 'unknown'} roof · ${pitch} pitch · ${objects} visible obstruction${objects === 1 ? '' : 's'} · ${confidence}% confidence${cacheNote}`, false);
       const detail = document.getElementById('roof-ai-details');
       if (detail) detail.textContent = 'AI suggestions are advisory; your drawn rooftop boundary remains authoritative.';
     } catch (error) {
@@ -60,7 +73,6 @@
     if (button) button.addEventListener('click', analyze);
     const apply = document.getElementById('roof-ai-apply-btn');
     if (apply) apply.addEventListener('click', function () { if (window.SIGNIX_ROOF3D?.applyAIStructures) window.SIGNIX_ROOF3D.applyAIStructures(); });
-    // Run automatically so the 3D preview becomes AI-assisted without an extra step.
-    window.setTimeout(analyze, 450);
+    // Gemini is advisory and potentially billable, so it runs only on request.
   });
 })();

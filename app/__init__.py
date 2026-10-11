@@ -102,6 +102,7 @@ def create_app():
     from app.locations import locations_bp
     from app.roof_ai import roof_ai_bp
     from app.roof_model import roof_model_bp
+    from app.rooftop_design import rooftop_design_bp
     from app.pages import pages_bp
 
     app.register_blueprint(auth_bp)
@@ -111,6 +112,7 @@ def create_app():
     app.register_blueprint(locations_bp)
     app.register_blueprint(roof_ai_bp)
     app.register_blueprint(roof_model_bp)
+    app.register_blueprint(rooftop_design_bp)
 
     # CSRF is enforced on unsafe methods (POST/PUT/PATCH/DELETE) app-wide.
     # estimate_bp and locations_bp were previously exempted; that exemption is

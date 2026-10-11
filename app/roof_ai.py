@@ -251,6 +251,35 @@ def _sanitize(data):
     }
 
 
+def analyze_polygon(polygon):
+    """Run the existing imagery + Gemini pipeline for a canonical lng/lat ring."""
+    api_key = current_app.config.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+    bbox = _bbox_from_polygon(polygon)
+    image_bytes = _download_imagery(bbox, polygon=polygon)
+    from google import genai
+    from google.genai import types
+
+    model = current_app.config.get("GEMINI_ROOF_MODEL") or current_app.config.get(
+        "GEMINI_MODEL", "gemini-3.6-flash"
+    )
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=model,
+        contents=[
+            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+            PROMPT,
+        ],
+    )
+    analysis = _sanitize(_parse_json(response.text))
+    analysis["imagery_bbox"] = [round(value, 8) for value in bbox]
+    analysis["imagery_provider"] = "Esri World Imagery"
+    analysis["model"] = model
+    analysis["user_drawn_roof_remains_authoritative"] = True
+    return analysis
+
+
 @roof_ai_bp.post("/api/roof-ai/imagery")
 @login_required
 def roof_imagery():
@@ -283,33 +312,13 @@ def analyze_roof():
     if not isinstance(polygon, list) or len(polygon) < 3:
         return jsonify(error="A valid rooftop polygon is required."), 400
 
-    api_key = current_app.config.get("GEMINI_API_KEY")
-    if not api_key:
+    if not current_app.config.get("GEMINI_API_KEY"):
         return jsonify(
             error="AI roof analysis is not configured. Set GEMINI_API_KEY on the server."
         ), 503
 
     try:
-        bbox = _bbox_from_polygon(polygon)
-        image_bytes = _download_imagery(bbox, polygon=polygon)
-        from google import genai
-        from google.genai import types
-
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model=current_app.config.get("GEMINI_ROOF_MODEL")
-            or current_app.config.get("GEMINI_MODEL", "gemini-3.6-flash"),
-            contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                PROMPT,
-            ],
-        )
-        analysis = _sanitize(_parse_json(response.text))
-        analysis["imagery_bbox"] = [round(v, 8) for v in bbox]
-        analysis["imagery_provider"] = "Esri World Imagery"
-        analysis["model"] = current_app.config.get("GEMINI_ROOF_MODEL") or current_app.config.get("GEMINI_MODEL")
-        analysis["user_drawn_roof_remains_authoritative"] = True
-        return jsonify(analysis=analysis)
+        return jsonify(analysis=analyze_polygon(polygon))
     except requests.RequestException as exc:
         current_app.logger.warning("Roof imagery unavailable: %s", exc)
         return jsonify(error="Satellite imagery could not be retrieved right now. Check the imagery service/network on the deployed server."), 502

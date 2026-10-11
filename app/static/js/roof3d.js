@@ -9,13 +9,17 @@
  */
 (function () {
   var scene, camera, renderer, rootGroup, animationId;
+  var roofPlanesGroup, panelsGroup, structuresGroup, boundaryGroup, contextGroup;
   var currentPitch = 0, currentPanels = 0, roofType = 'flat';
   var aiStructuresApplied = false;
   var localRing = null, localObstructions = [], aiObstructions = [], aiPlanes = [];
   var footprintSpan = 12, roofInfo = null;
   var cameraDistance = 14, cameraAzimuth = 0.72, cameraElevation = 0.62;
+  var cameraTargetX = 0, cameraTargetY = 2.0, cameraTargetZ = 0;
   var userInteracted = false, aiAnalysis = null, satelliteTexture = null, siteRoofModel = null, siteModelLoading = false;
   var siteSegmentPlanes = [];
+  var reconstructedSurfaces = [], reconstructedStructures = [], projectionOrigin = null;
+  var selectedSurfaceId = null, viewMode = '3d';
   var shadeGrid = null, shadeSide = null, shadeAvoidedPanels = 0;
   var currentOrientationDeg = (typeof ORIENTATION_DEG !== 'undefined' && Number.isFinite(Number(ORIENTATION_DEG))) ? Number(ORIENTATION_DEG) : 180;
   var savedOrientationDeg = currentOrientationDeg;
@@ -35,7 +39,12 @@
     if (!r || r.length < 3) { if (g.coordinates.length >= 3 && typeof g.coordinates[0][0] === 'number') r = g.coordinates; else return null; }
     return r;
   }
-  function geoJsonRingToLocal(ring) {
+  function geographicOrigin(ring) {
+    var valid=(ring||[]).filter(function(p){return p&&p.length>=2&&isFinite(Number(p[0]))&&isFinite(Number(p[1]));});
+    if(!valid.length)return null;
+    return {lng:valid.reduce(function(sum,p){return sum+Number(p[0]);},0)/valid.length,lat:valid.reduce(function(sum,p){return sum+Number(p[1]);},0)/valid.length};
+  }
+  function geoJsonRingToLocal(ring, origin) {
     if (!ring || ring.length < 3) return null;
     var pts=[];
     ring.forEach(function(p){
@@ -44,7 +53,8 @@
       if(lat>=-90&&lat<=90&&lng>=-180&&lng<=180)pts.push({lat:lat,lng:lng});
     });
     if(pts.length<3)return null;
-    var cLat=0,cLng=0; for(var i=0;i<pts.length;i++){cLat+=pts[i].lat;cLng+=pts[i].lng;} cLat/=pts.length;cLng/=pts.length;
+    var cLat=origin&&Number.isFinite(origin.lat)?origin.lat:0,cLng=origin&&Number.isFinite(origin.lng)?origin.lng:0;
+    if(!origin){for(var i=0;i<pts.length;i++){cLat+=pts[i].lat;cLng+=pts[i].lng;} cLat/=pts.length;cLng/=pts.length;}
     var mLat=111320,mLng=111320*Math.cos(cLat*Math.PI/180);
     return pts.map(function(p){return[(p.lng-cLng)*mLng,-(p.lat-cLat)*mLat];});
   }
@@ -76,8 +86,112 @@
     return pts.some(function(pt){var v=shadeValueAt(pt[0],pt[1]);return v!==null&&v<threshold;});
   }
   function polygonFits(poly,roof,obstructions){if(!roof)return false;for(var i=0;i<poly.length;i++)if(!pointInRing(poly[i][0],poly[i][1],roof))return false;if(polygonEdgesIntersect(poly,roof))return false;for(i=0;i<obstructions.length;i++){var o=obstructions[i];if(pointInRing(poly[0][0],poly[0][1],o)||polygonEdgesIntersect(poly,o))return false;var oc=polygonCentroid(o);if(pointInRing(oc[0],oc[1],poly))return false;}if(panelTouchesShade(poly)){shadeAvoidedPanels++;return false;}return true;}
+  function sumSurfacePanelCounts(counts){return Object.values(counts||{}).reduce(function(sum,count){return sum+(Number(count)||0);},0);}
+  function layoutCapacityKw(count,moduleWatts){var watts=Number(moduleWatts);return Number.isFinite(watts)?Number(count||0)*watts/1000:null;}
+  function layoutDiffersFromEstimate(layoutKw,selectedKw){return layoutKw!==null&&Number.isFinite(Number(selectedKw))&&Math.abs(layoutKw-Number(selectedKw))>.15;}
+  function cameraFrameForBounds(bounds,aspect){var safeAspect=Math.max(Number(aspect)||1,.35),horizontalNeed=Math.max(Number(bounds.width)||0,.5)/safeAspect,depthNeed=Math.max(Number(bounds.depth)||0,.5)*.78+Math.max(Number(bounds.height)||0,.5)*.72;return Math.max(5.5,Math.max(horizontalNeed,depthNeed)*1.32);}
   function clearGroup(g){if(!g)return;while(g.children.length){var c=g.children.pop();if(c.geometry)c.geometry.dispose();if(c.material){if(Array.isArray(c.material))c.material.forEach(function(m){m.dispose();});else c.material.dispose();}}}
   function shapeFromRing(r){var s=new THREE.Shape();s.moveTo(r[0][0],r[0][1]);for(var i=1;i<r.length;i++)s.lineTo(r[i][0],r[i][1]);s.closePath();return s;}
+
+  function surfaceHeight(surface,x,z){
+    var pitch=(Number(surface.pitch)||0)*Math.PI/180,az=(Number(surface.azimuth)||0)*Math.PI/180;
+    var down=[Math.sin(az),-Math.cos(az)],ref=surface.reference||[0,0];
+    return 2.75+(Number(surface.relativeHeight)||0)+(Number(surface.verticalOffset)||0)-Math.tan(pitch)*((x-ref[0])*down[0]+(z-ref[1])*down[1]);
+  }
+  function surfaceAt(x,z){
+    for(var i=0;i<reconstructedSurfaces.length;i++)if(pointInRing(x,z,reconstructedSurfaces[i].polygon))return reconstructedSurfaces[i];
+    return null;
+  }
+  function roofHeightFromSurfaces(x,z){var surface=surfaceAt(x,z);return surface?surfaceHeight(surface,x,z):2.75;}
+  function makeSurfaceMesh(surface,index){
+    var poly=surface.polygon,pts=poly.map(function(p){return new THREE.Vector2(p[0],p[1]);});
+    var tris=THREE.ShapeUtils.triangulateShape(pts,[]),pos=[];
+    tris.forEach(function(t){t.forEach(function(i){var p=poly[i];pos.push(p[0],surfaceHeight(surface,p[0],p[1]),p[1]);});});
+    if(!pos.length)return null;
+    var geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geom.computeVertexNormals();
+    var colors=[0x8d9698,0x819095,0x929698,0x79898d];
+    var mat=new THREE.MeshStandardMaterial({color:colors[index%colors.length],roughness:.78,metalness:.025,side:THREE.DoubleSide});
+    var mesh=new THREE.Mesh(geom,mat);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={kind:'roof-surface',surfaceId:surface.parentId||surface.id,baseColor:mat.color.getHex()};roofPlanesGroup.add(mesh);
+    return mesh;
+  }
+  function addSurfaceEdges(){
+    var edges={};
+    function pointKey(point){return point[0].toFixed(3)+','+point[1].toFixed(3);}
+    reconstructedSurfaces.forEach(function(surface){surface.polygon.forEach(function(start,index){var end=surface.polygon[(index+1)%surface.polygon.length],a=pointKey(start),b=pointKey(end),key=a<b?a+'|'+b:b+'|'+a;if(!edges[key])edges[key]={start:start,end:end,surface:surface,count:0,parents:{}};edges[key].count++;edges[key].parents[surface.parentId||surface.id]=true;});});
+    var positions=[];Object.values(edges).forEach(function(edge){var parentCount=Object.keys(edge.parents).length;if(edge.count>1&&parentCount===1)return;[edge.start,edge.end].forEach(function(point){positions.push(point[0],surfaceHeight(edge.surface,point[0],point[1])+.024,point[1]);});});
+    if(!positions.length)return;var geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));var line=new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({color:0x4f5d61,transparent:true,opacity:.86}));line.userData={kind:'roof-edge'};roofPlanesGroup.add(line);
+  }
+  function addAuthoritativeBoundary(){
+    var points=localRing.map(function(p){return new THREE.Vector3(p[0],roofHeightFromSurfaces(p[0],p[1])+.11,p[1]);});points.push(points[0].clone());
+    var line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:0xf2a33a,linewidth:2,transparent:true,opacity:.98}));line.userData={kind:'authoritative-boundary'};boundaryGroup.add(line);
+  }
+  function addReconstructedStructures(){
+    reconstructedStructures.forEach(function(item,index){
+      var r=item.polygon;if(!r||r.length<3)return;var height=Number(item.renderHeight)||.35,points=r.map(function(point){return new THREE.Vector2(point[0],point[1]);}),triangles=THREE.ShapeUtils.triangulateShape(points,[]),positions=[];
+      function pushVertex(point,offset){positions.push(point[0],roofHeightFromSurfaces(point[0],point[1])+.025+offset,point[1]);}
+      triangles.forEach(function(triangle){pushVertex(r[triangle[0]],height);pushVertex(r[triangle[1]],height);pushVertex(r[triangle[2]],height);pushVertex(r[triangle[2]],0);pushVertex(r[triangle[1]],0);pushVertex(r[triangle[0]],0);});
+      r.forEach(function(start,edgeIndex){var end=r[(edgeIndex+1)%r.length];pushVertex(start,0);pushVertex(end,0);pushVertex(end,height);pushVertex(start,0);pushVertex(end,height);pushVertex(start,height);});
+      var geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geom.computeVertexNormals();
+      var mesh=new THREE.Mesh(geom,new THREE.MeshStandardMaterial({color:index%2?0x9da5a7:0xadb4b5,roughness:.84}));mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={kind:'structure',structureId:item.id};structuresGroup.add(mesh);
+    });
+  }
+  function packReconstructedPanels(requested){
+    var candidates=[],angle=azimuthToWorldAngle(currentOrientationDeg),obstructions=reconstructedStructures.map(function(s){return s.polygon;});
+    reconstructedSurfaces.forEach(function(surface){
+      if(surface.valid===false||!surface.polygon||surface.polygon.length<3)return;
+      var best=[];
+      [{w:PANEL_W,d:PANEL_D},{w:PANEL_D,d:PANEL_W}].forEach(function(size){
+        var rotated=transformRing(surface.polygon,-angle),bounds=ringBounds(rotated),found=[];
+        for(var z=bounds.minZ+EDGE_SETBACK+size.d/2;z<=bounds.maxZ-EDGE_SETBACK-size.d/2+.001;z+=size.d+PANEL_GAP){
+          for(var x=bounds.minX+EDGE_SETBACK+size.w/2;x<=bounds.maxX-EDGE_SETBACK-size.w/2+.001;x+=size.w+PANEL_GAP){
+            var center=rotatePoint([x,z],angle),corners=rect(center[0],center[1],size.w,size.d,angle);
+            if(polygonFits(corners,surface.polygon,obstructions)&&polygonFits(corners,localRing,obstructions))found.push({x:center[0],z:center[1],w:size.w,d:size.d,angle:angle,corners:corners,surface:surface});
+          }
+        }
+        if(found.length>best.length)best=found;
+      });
+      candidates=candidates.concat(best);
+    });
+    return candidates.slice(0,Math.max(0,Math.min(160,Number(requested)||0)));
+  }
+  function addReconstructedPanels(requested){
+    shadeAvoidedPanels=0;var panels=packReconstructedPanels(requested);
+    var mat=new THREE.MeshStandardMaterial({color:0x114d82,roughness:.25,metalness:.3,side:THREE.DoubleSide});
+    var edgeMat=new THREE.LineBasicMaterial({color:0xc9e0ea,transparent:true,opacity:.82});
+    panels.forEach(function(panel){
+      var vertices=[];panel.corners.forEach(function(p){vertices.push(new THREE.Vector3(p[0],surfaceHeight(panel.surface,p[0],p[1])+.085,p[1]));});
+      var geom=new THREE.BufferGeometry().setFromPoints(vertices);geom.setIndex([0,1,2,0,2,3]);geom.computeVertexNormals();var mesh=new THREE.Mesh(geom,mat);mesh.castShadow=true;mesh.userData={kind:'panel',surfaceId:panel.surface.parentId||panel.surface.id};panelsGroup.add(mesh);
+      var outline=vertices.map(function(v){return v.clone();});outline.push(outline[0].clone());panelsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(outline),edgeMat));
+    });
+    updatePanelStatus(panels.length,requested);updateSurfacePanelCounts(panels);return panels.length;
+  }
+  function updateSurfacePanelCounts(panels){
+    var counts={};panels.forEach(function(panel){var id=panel.surface.parentId||panel.surface.id;counts[id]=(counts[id]||0)+1;});
+    reconstructedSurfaces.forEach(function(surface){surface.panelCount=counts[surface.parentId||surface.id]||0;});var total=sumSurfacePanelCounts(counts),headline=document.getElementById('roof3d-module-count');if(headline)headline.innerHTML=String(total)+' <small>modules</small>';renderInspector();
+  }
+  function renderInspector(){
+    var list=document.getElementById('roof3d-surface-list'),structures=document.getElementById('roof3d-structure-list');if(!list||!structures)return;
+    var groups={};reconstructedSurfaces.forEach(function(s){var id=s.parentId||s.id;if(!groups[id])groups[id]={id:id,area:0,usableArea:0,pitch:s.pitch,azimuth:s.azimuth,elevation:s.referenceHeight,source:s.source,confidence:s.confidence,panels:0,valid:s.valid!==false};groups[id].area+=Number(s.area)||0;groups[id].usableArea+=Number(s.usableArea)||0;groups[id].panels=Math.max(groups[id].panels,Number(s.panelCount)||0);groups[id].valid=groups[id].valid&&s.valid!==false;});
+    var items=Object.values(groups);list.innerHTML=items.length?items.map(function(s,index){var elevation=s.elevation==null?'Elevation unavailable':Number(s.elevation).toFixed(1)+' m elevation',validity=s.valid?'':' · invalid surface';return '<button type="button" class="roof3d-surface-item'+(selectedSurfaceId===s.id?' active':'')+'" data-surface-id="'+s.id+'"><strong>Surface '+(index+1)+'</strong><span>'+s.area.toFixed(1)+' m² area · '+s.usableArea.toFixed(1)+' m² usable</span><span>'+Math.round(s.pitch)+'° pitch · '+Math.round(s.azimuth)+'° azimuth</span><small>'+s.panels+' modules · '+elevation+' · '+String(s.source||'unavailable').replaceAll('_',' ')+' · '+String(s.confidence||'unavailable')+validity+'</small></button>';}).join(''):'<p class="roof3d-empty">Roof surface data unavailable</p>';
+    structures.innerHTML=reconstructedStructures.length?reconstructedStructures.map(function(s){var bounds=ringBounds(s.polygon);return '<div class="roof3d-structure-item"><strong>'+String(s.type||'Structure')+'</strong><span>'+(s.height==null?'Height unavailable':Number(s.height).toFixed(1)+' m high')+' · '+bounds.width.toFixed(1)+' × '+bounds.depth.toFixed(1)+' m footprint</span><small>'+(s.isObstruction?'Panel obstruction · ':'')+String(s.source||'unavailable')+' · '+String(s.confidence||'unavailable')+'</small></div>';}).join(''):'<p class="roof3d-empty">No reconstructed structures</p>';
+    list.querySelectorAll('[data-surface-id]').forEach(function(button){button.addEventListener('click',function(){selectSurface(this.dataset.surfaceId);});});
+  }
+  function selectSurface(id){selectedSurfaceId=id;roofPlanesGroup.children.forEach(function(child){if(child.material&&child.userData.kind==='roof-surface'){var active=(child.userData.surfaceId===id);child.material.color.setHex(active?0xc68b43:child.userData.baseColor);child.material.emissive?.setHex(active?0x2b1704:0x000000);}});renderInspector();}
+
+  function buildReconstructedModel(panelCount){
+    if(!siteRoofModel||!Array.isArray(siteRoofModel.surfaces))return false;clearGroup(rootGroup);
+    roofPlanesGroup=new THREE.Group();roofPlanesGroup.name='roof-planes';panelsGroup=new THREE.Group();panelsGroup.name='panels';structuresGroup=new THREE.Group();structuresGroup.name='structures';boundaryGroup=new THREE.Group();boundaryGroup.name='boundary';contextGroup=new THREE.Group();contextGroup.name='context';rootGroup.add(contextGroup,roofPlanesGroup,structuresGroup,panelsGroup,boundaryGroup);
+    var originData=siteRoofModel.projection_origin||{},origin={lng:Number(originData.longitude),lat:Number(originData.latitude)};projectionOrigin=origin;
+    localRing=geoJsonRingToLocal(extractRing(siteRoofModel.authoritative_boundary_geojson),origin)||localRing;
+    var rawSurfaces=siteRoofModel.surfaces||[],heights=rawSurfaces.filter(function(s){return s.reference_height_meters!=null&&Number.isFinite(Number(s.reference_height_meters));}).map(function(s){return Number(s.reference_height_meters);}),minHeight=heights.length?Math.min.apply(null,heights):null;
+    reconstructedSurfaces=rawSurfaces.map(function(s,index){var ref=s.reference_point||{},mLat=111320,mLng=mLat*Math.cos(origin.lat*Math.PI/180),reference=[(Number(ref.longitude)-origin.lng)*mLng,-(Number(ref.latitude)-origin.lat)*mLat],knownHeight=s.reference_height_meters!=null&&Number.isFinite(Number(s.reference_height_meters));if(!Number.isFinite(reference[0])||!Number.isFinite(reference[1]))reference=[0,0];return{id:s.id||('surface-'+index),parentId:s.parent_surface_id||s.id,polygon:geoJsonRingToLocal(extractRing(s.polygon_geojson),origin),pitch:Number(s.pitch_degrees)||0,azimuth:Number(s.azimuth_degrees)||0,normal:s.plane_normal_enu,reference:reference,referenceHeight:knownHeight?Number(s.reference_height_meters):null,relativeHeight:knownHeight&&minHeight!=null?Math.max(0,Math.min(8,Number(s.reference_height_meters)-minHeight)):0,verticalOffset:0,area:Number(s.area_sqm)||0,projectedArea:Number(s.projected_area_sqm)||0,usableArea:Number(s.usable_area_sqm)||0,valid:s.is_valid!==false,source:s.source,confidence:s.confidence};}).filter(function(s){return s.polygon&&s.polygon.length>=3;});
+    var minimumPlaneOffset=Infinity;
+    reconstructedSurfaces.forEach(function(surface){var pitch=surface.pitch*Math.PI/180,az=surface.azimuth*Math.PI/180,down=[Math.sin(az),-Math.cos(az)];surface.polygon.forEach(function(point){var offset=surface.relativeHeight-Math.tan(pitch)*((point[0]-surface.reference[0])*down[0]+(point[1]-surface.reference[1])*down[1]);minimumPlaneOffset=Math.min(minimumPlaneOffset,offset);});});
+    var surfaceLift=Number.isFinite(minimumPlaneOffset)&&minimumPlaneOffset<0?-minimumPlaneOffset:0;reconstructedSurfaces.forEach(function(surface){surface.verticalOffset=surfaceLift;});
+    reconstructedStructures=(siteRoofModel.structures||[]).map(function(s){return{id:s.id,type:s.type,polygon:geoJsonRingToLocal(extractRing(s.footprint_geojson),origin),height:s.height_meters,renderHeight:s.render_height_meters,area:s.footprint_area_sqm,isObstruction:s.is_obstruction!==false,source:s.source,confidence:s.confidence};}).filter(function(s){return s.polygon&&s.polygon.length>=3;});
+    localObstructions=reconstructedStructures.map(function(s){return s.polygon;});var bounds=ringBounds(localRing);footprintSpan=Math.max(Math.max(bounds.width,bounds.depth),7);var top=2.75;reconstructedSurfaces.forEach(function(surface){surface.polygon.forEach(function(point){top=Math.max(top,surfaceHeight(surface,point[0],point[1]));});});roofInfo={type:'reconstructed',baseY:2.75,rise:Math.max(0,top-2.75)};
+    addGround();var wallObstructions=localObstructions;localObstructions=[];addWalls(2.72);localObstructions=wallObstructions;reconstructedSurfaces.filter(function(surface){return surface.valid!==false;}).forEach(makeSurfaceMesh);addSurfaceEdges();addReconstructedStructures();addReconstructedPanels(panelCount);addAuthoritativeBoundary();renderInspector();applyLayerVisibility();updateProviderStatus();updateOrientation(roofInfo);fitCamera();return true;
+  }
 
   function siteHeightAt(x, z) {
     var g = siteRoofModel && siteRoofModel.dsmGrid;
@@ -122,6 +236,7 @@
   }
   function buildSiteRoofModel(panelCount){
     if(!siteRoofModel)return false;
+    if(Array.isArray(siteRoofModel.surfaces))return buildReconstructedModel(panelCount);
     clearGroup(rootGroup);
     var g=siteRoofModel.dsmGrid, b=ringBounds(localRing); footprintSpan=Math.max(Math.min(Math.max(b.width,b.depth),30),7);
     roofInfo={type:'site',baseY:1.8,angle:0,pitchRad:0,halfD:Math.max(b.depth/2,.5),halfW:Math.max(b.width/2,.5),centerZ:b.cz,centerX:b.cx,minZ:b.minZ,depth:Math.max(b.depth,.5),rise:g?Math.max(Number(g.maxRelativeHeightMeters)||0,0):2.2};
@@ -155,6 +270,35 @@
     addStructureBlocks(localObstructions.map(function(r){return{polygon:r};}),'user');
     addStructureBlocks(aiObstructions,'ai');
     addPanels(panelCount,roofInfo); updateOrientation(roofInfo); fitCamera(); return true;
+  }
+
+  function updateProviderStatus(){
+    var badge=document.getElementById('roof3d-provider-status');if(!badge||!siteRoofModel)return;var status=siteRoofModel.status_badge||{};
+    badge.className='roof3d-provider-status '+(status.tone||'fallback');badge.innerHTML='<strong>'+String(status.label||'Rooftop model')+'</strong><span>'+String(status.detail||'')+'</span>';
+    var satellite=document.querySelector('[data-roof3d-view="satellite"]');if(satellite){var available=Boolean(siteRoofModel.imagery&&siteRoofModel.imagery.available);satellite.disabled=!available;satellite.title=available?'Show available satellite reference':'Satellite imagery unavailable for this reconstruction';}
+    var satelliteBadge=document.getElementById('roof3d-satellite-badge');if(satelliteBadge&&!siteRoofModel.imagery?.available){satelliteBadge.textContent='Satellite reference · unavailable';satelliteBadge.classList.add('is-error');satelliteBadge.classList.remove('is-ready');}
+  }
+  function applyLayerVisibility(){
+    [['roof-planes',roofPlanesGroup],['panels',panelsGroup],['structures',structuresGroup],['boundary',boundaryGroup]].forEach(function(pair){var input=document.querySelector('[data-roof3d-layer="'+pair[0]+'"]');if(pair[1])pair[1].visible=(!input||input.checked)&&!(viewMode==='wireframe'&&pair[0]==='panels');});
+  }
+  function setViewMode(mode){
+    if(mode==='satellite'&&!(siteRoofModel&&siteRoofModel.imagery&&siteRoofModel.imagery.available))return;
+    viewMode=['3d','top','wireframe','satellite'].indexOf(mode)>=0?mode:'3d';
+    document.querySelectorAll('[data-roof3d-view]').forEach(function(button){button.classList.toggle('active',button.dataset.roof3dView===viewMode);});
+    if(roofPlanesGroup)roofPlanesGroup.traverse(function(obj){if(obj.material&&obj.userData.kind==='roof-surface'){obj.material.wireframe=false;obj.material.transparent=viewMode==='wireframe';obj.material.opacity=viewMode==='wireframe'?.12:1;obj.visible=true;}if(obj.userData.kind==='roof-edge')obj.visible=true;});
+    if(panelsGroup)panelsGroup.visible=viewMode!=='wireframe'&&(document.querySelector('[data-roof3d-layer="panels"]')?.checked!==false);
+    if(structuresGroup)structuresGroup.traverse(function(obj){if(obj.material)obj.material.wireframe=viewMode==='wireframe';});
+    if(viewMode==='top'){cameraElevation=1.555;cameraAzimuth=0;}else if(viewMode!=='wireframe'){cameraElevation=.55;cameraAzimuth=.72;}
+    fitCamera(true);
+  }
+  function bindPlannerControls(){
+    document.querySelectorAll('[data-roof3d-layer]').forEach(function(input){input.addEventListener('change',applyLayerVisibility);});
+    document.querySelectorAll('[data-roof3d-view]').forEach(function(button){button.addEventListener('click',function(){setViewMode(this.dataset.roof3dView);});});
+    document.getElementById('roof3d-reset-view')?.addEventListener('click',function(){fitCamera();setViewMode('3d');});
+    var azimuth=document.getElementById('roof3d-panel-azimuth');if(azimuth){azimuth.value=String(Math.round(currentOrientationDeg));azimuth.addEventListener('change',function(){setOrientation(Number(this.value),true);});}
+  }
+  function bindSurfaceSelection(container){
+    var raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();container.addEventListener('click',function(event){if(!renderer||!camera||!roofPlanesGroup)return;var rect=renderer.domElement.getBoundingClientRect();pointer.x=((event.clientX-rect.left)/rect.width)*2-1;pointer.y=-((event.clientY-rect.top)/rect.height)*2+1;raycaster.setFromCamera(pointer,camera);var hit=raycaster.intersectObjects(roofPlanesGroup.children,false).find(function(item){return item.object.userData.kind==='roof-surface';});if(hit)selectSurface(hit.object.userData.surfaceId);});
   }
 
   function roofLocalPoint(x, z, info) {
@@ -382,9 +526,10 @@
     var t=document.getElementById('roof3d-orientation'),d=document.getElementById('roof3d-orientation-detail');
     if(!t||!d)return;
     var heading=((Number(currentOrientationDeg)||0)%360+360)%360;
-    var pitch=Math.round(Number(aiAnalysis?.pitch_degrees ?? currentPitch)||0);
+    var selected=reconstructedSurfaces.find(function(surface){return (surface.parentId||surface.id)===selectedSurfaceId;})||reconstructedSurfaces[0];
+    var pitch=Math.round(Number(selected?selected.pitch:(aiAnalysis?.pitch_degrees ?? currentPitch))||0);
     t.textContent='Solar orientation · '+cardinalDirection(heading*Math.PI/180)+' · '+Math.round(heading)+'°';
-    d.textContent=roofType==='flat'?'Panels tilted '+Math.round(FLAT_PANEL_TILT*180/Math.PI)+'° · drag the compass to optimize':'Panels facing '+Math.round(heading)+'° · '+pitch+'° roof pitch · drag the compass';
+    d.textContent=(selected&&selected.pitch===0)||(!selected&&roofType==='flat')?'Panels tilted '+Math.round(FLAT_PANEL_TILT*180/Math.PI)+'° · drag the compass to optimize':'Panels facing '+Math.round(heading)+'° · '+pitch+'° roof pitch · drag the compass';
     var detail=document.getElementById('roof3d-ai-details');
     if(detail){
       var aiText=aiAnalysis?' AI vision: '+(aiAnalysis.roof_type||roofType)+' roof, '+pitch+'° pitch, advisory confidence '+Math.round((Number(aiAnalysis.confidence)||0)*100)+'%.':'';
@@ -394,6 +539,7 @@
   }
 
   function updateOrientationStatus(result){
+    if(result&&result.chart_data)window.dispatchEvent(new CustomEvent('signix:chart-data',{detail:result.chart_data}));
     if(!result)return;
     var gen=Number(result.annual_generation);
     var savings=Number(result.monthly_savings);
@@ -433,6 +579,7 @@
   function setOrientation(deg, preview){
     var n=Number(deg);if(!Number.isFinite(n))return;
     currentOrientationDeg=((n%360)+360)%360;orientationDirty=Math.abs(currentOrientationDeg-savedOrientationDeg)>0.1;
+    var azimuth=document.getElementById('roof3d-panel-azimuth');if(azimuth)azimuth.value=String(Math.round(currentOrientationDeg));
     buildRoofModel(currentPitch,currentPanels);
     if(preview){clearTimeout(orientationPreviewTimer);orientationPreviewTimer=setTimeout(requestOrientationPreview,180);}
   }
@@ -466,16 +613,24 @@
   }
 
   function undoOrientation(){setOrientation(savedOrientationDeg,false);orientationDirty=false;var apply=document.getElementById('roof3d-orientation-apply');if(apply){apply.disabled=true;apply.textContent='Apply orientation';}requestOrientationPreview();}
-  function updatePanelStatus(placed,requested){var e=document.getElementById('roof-3d-panel-status');var shadeText=shadeAvoidedPanels>0?' '+shadeAvoidedPanels+' candidate positions excluded for low-sun/shaded areas.':'';if(e)e.textContent=requested&&placed<requested?placed+' of '+requested+' modules fit after roof setbacks, obstructions and shade.'+shadeText:placed+' physical PV modules placed on the selected roof.'+shadeText;var c=document.getElementById('roof3d-module-count');if(c)c.textContent=String(placed||0);}
-  function parseGeometryFromGlobals(){localRing=null;localObstructions=[];var r=geoJsonRingToLocal(extractRing(typeof ROOF_POLYGON_GEOJSON!=='undefined'?ROOF_POLYGON_GEOJSON:null));if(r)localRing=r;var obs=typeof ROOF_OBSTRUCTIONS_GEOJSON!=='undefined'?ROOF_OBSTRUCTIONS_GEOJSON:null;if(obs&&obs.coordinates){var list=obs.type==='MultiPolygon'?obs.coordinates:[obs.coordinates];list.forEach(function(item){var loc=geoJsonRingToLocal(item[0]||item);if(loc&&loc.length>=3)localObstructions.push(loc);});}}
-  function fitCamera(){if(!camera)return;cameraDistance=Math.max(footprintSpan*1.22,8.5);cameraAzimuth=.72;cameraElevation=.48;updateCamera();}
-  function updateCamera(){if(!camera)return;var targetY=roofInfo?(roofInfo.baseY+Math.max(roofInfo.rise,0)*.34):2.0,ce=Math.cos(cameraElevation),se=Math.sin(cameraElevation);camera.position.set(Math.cos(cameraAzimuth)*ce*cameraDistance,targetY+se*cameraDistance,Math.sin(cameraAzimuth)*ce*cameraDistance);camera.lookAt(0,targetY,0);}
-  function bindCameraControls(container){var dragging=false,lastX=0,lastY=0;container.addEventListener('pointerdown',function(e){dragging=true;userInteracted=true;lastX=e.clientX;lastY=e.clientY;container.setPointerCapture?.(e.pointerId);});container.addEventListener('pointermove',function(e){if(!dragging)return;var dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;cameraAzimuth-=dx*.008;cameraElevation=Math.max(.16,Math.min(1.18,cameraElevation+dy*.006));updateCamera();});['pointerup','pointercancel'].forEach(function(ev){container.addEventListener(ev,function(){dragging=false;});});container.addEventListener('wheel',function(e){e.preventDefault();userInteracted=true;cameraDistance=Math.max(Math.max(footprintSpan*.56,6.5),Math.min(Math.max(footprintSpan*2.6,26),cameraDistance*(1+e.deltaY*.0008)));updateCamera();},{passive:false});}
+  function updatePanelStatus(placed,requested){var e=document.getElementById('roof-3d-panel-status'),moduleWatts=typeof MODULE_WATTAGE_W!=='undefined'?Number(MODULE_WATTAGE_W):NaN,selectedKw=typeof SYSTEM_SIZE!=='undefined'?Number(SYSTEM_SIZE):NaN,layoutKw=layoutCapacityKw(placed,moduleWatts),shadeText=shadeAvoidedPanels>0?' '+shadeAvoidedPanels+' candidate positions excluded for low-sun/shaded areas.':'';var message=requested&&placed<requested?placed+' of '+requested+' estimate modules fit after roof setbacks and obstructions.':placed+' physical modules placed on valid reconstructed surfaces.';if(layoutDiffersFromEstimate(layoutKw,selectedKw))message+=' Layout capacity '+layoutKw.toFixed(2)+' kWp differs from the selected '+selectedKw.toFixed(2)+' kW estimate.';if(e)e.textContent=message+shadeText;var c=document.getElementById('roof3d-module-count');if(c)c.innerHTML=String(placed||0)+' <small>modules</small>';var capacity=document.getElementById('roof3d-layout-capacity');if(capacity)capacity.innerHTML=layoutKw===null?'Unavailable':layoutKw.toFixed(2)+' <small>kWp</small>';}
+  function parseGeometryFromGlobals(){localRing=null;localObstructions=[];var raw=extractRing(typeof ROOF_POLYGON_GEOJSON!=='undefined'?ROOF_POLYGON_GEOJSON:null),origin=geographicOrigin(raw);projectionOrigin=origin;var r=geoJsonRingToLocal(raw,origin);if(r)localRing=r;var obs=typeof ROOF_OBSTRUCTIONS_GEOJSON!=='undefined'?ROOF_OBSTRUCTIONS_GEOJSON:null;if(obs&&obs.coordinates){var list=obs.type==='MultiPolygon'?obs.coordinates:[obs.coordinates];list.forEach(function(item){var loc=geoJsonRingToLocal(item[0]||item,origin);if(loc&&loc.length>=3)localObstructions.push(loc);});}}
+  function reconstructionBounds(){
+    var ring=localRing&&localRing.length?localRing:[[-4,-3],[4,-3],[4,3],[-4,3]],bounds=ringBounds(ring),minY=0,maxY=roofInfo?roofInfo.baseY+Math.max(roofInfo.rise,0):3;
+    reconstructedSurfaces.forEach(function(surface){surface.polygon.forEach(function(point){var y=surfaceHeight(surface,point[0],point[1]);minY=Math.min(minY,y);maxY=Math.max(maxY,y);});});
+    reconstructedStructures.forEach(function(item){if(!item.polygon)return;var center=polygonCentroid(item.polygon),top=roofHeightFromSurfaces(center[0],center[1])+(Number(item.renderHeight)||.35);maxY=Math.max(maxY,top);});
+    return{minX:bounds.minX,maxX:bounds.maxX,minZ:bounds.minZ,maxZ:bounds.maxZ,minY:minY,maxY:maxY,width:Math.max(bounds.width,.5),depth:Math.max(bounds.depth,.5),height:Math.max(maxY-minY,.5),cx:bounds.cx,cz:bounds.cz,cy:(minY+maxY)/2};
+  }
+  function fitCamera(preserveView){if(!camera)return;var bounds=reconstructionBounds(),container=document.getElementById('roof-3d-container'),aspect=Math.max((container?.clientWidth||600)/(container?.clientHeight||420),.35);cameraDistance=cameraFrameForBounds(bounds,aspect);if(!preserveView){cameraAzimuth=.72;cameraElevation=.55;}cameraTargetX=bounds.cx;cameraTargetY=bounds.cy+.18;cameraTargetZ=bounds.cz;camera.near=.1;camera.far=Math.max(250,cameraDistance*12);updateCamera();}
+  function updateCamera(){if(!camera)return;var container=document.getElementById('roof-3d-container'),aspect=Math.max((container?.clientWidth||600)/(container?.clientHeight||420),.2),view=Math.max(cameraDistance,5.5);if(camera.isOrthographicCamera){camera.left=-view*aspect/2;camera.right=view*aspect/2;camera.top=view/2;camera.bottom=-view/2;camera.updateProjectionMatrix();}var targetY=cameraTargetY,positionDistance=Math.max(view*1.8,12),ce=Math.cos(cameraElevation),se=Math.sin(cameraElevation);camera.position.set(cameraTargetX+Math.cos(cameraAzimuth)*ce*positionDistance,targetY+se*positionDistance,cameraTargetZ+Math.sin(cameraAzimuth)*ce*positionDistance);camera.lookAt(cameraTargetX,targetY,cameraTargetZ);}
+  function bindCameraControls(container){var dragging=false,lastX=0,lastY=0;container.addEventListener('pointerdown',function(e){dragging=true;userInteracted=true;lastX=e.clientX;lastY=e.clientY;container.setPointerCapture?.(e.pointerId);});container.addEventListener('pointermove',function(e){if(!dragging)return;var dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;if(e.shiftKey||e.buttons===4){var scale=cameraDistance/500;cameraTargetX-=dx*scale;cameraTargetZ-=dy*scale;}else{cameraAzimuth-=dx*.008;cameraElevation=Math.max(.16,Math.min(1.56,cameraElevation+dy*.006));}updateCamera();});['pointerup','pointercancel'].forEach(function(ev){container.addEventListener(ev,function(){dragging=false;});});container.addEventListener('wheel',function(e){e.preventDefault();userInteracted=true;cameraDistance=Math.max(Math.max(footprintSpan*.56,6.5),Math.min(Math.max(footprintSpan*2.8,32),cameraDistance*(1+e.deltaY*.0008)));updateCamera();},{passive:false});}
   function setRoofType(type){roofType=['flat','gable','hip','shed','mixed'].indexOf(type)>=0?type:'flat';buildRoofModel(currentPitch,currentPanels);}
-  function applyAIAnalysis(a){if(!a||typeof a!=='object')return;aiAnalysis=a;aiStructuresApplied=false;var bbox=a.imagery_bbox;aiPlanes=[];aiObstructions=[];
+  function stageAIAnalysis(a){if(!a||typeof a!=='object')return;aiAnalysis=a;aiStructuresApplied=false;var bbox=a.imagery_bbox;aiPlanes=[];aiObstructions=[];
     function normToLocal(poly){if(!bbox||!Array.isArray(bbox)||bbox.length!==4)return null;var minLng=bbox[0],minLat=bbox[1],maxLng=bbox[2],maxLat=bbox[3];var geojson=poly.map(function(p){var lng=minLng+(Number(p[0])/1000)*(maxLng-minLng),lat=maxLat-(Number(p[1])/1000)*(maxLat-minLat);return[lng,lat];});return geoJsonRingToLocal(geojson);}
     (a.roof_planes||[]).forEach(function(p){var loc=normToLocal(p.polygon||[]);if(loc&&loc.length>=3)aiPlanes.push({polygon:loc,pitch:Number(p.pitch_degrees)||0,azimuth:Number.isFinite(Number(p.azimuth_degrees))?Number(p.azimuth_degrees):null,confidence:Number(p.confidence)||0});});
     (a.obstructions||[]).forEach(function(o){var loc=normToLocal(o.polygon||[]);if(loc&&loc.length>=3)aiObstructions.push({polygon:loc,type:o.type||'detected structure',confidence:Number(o.confidence)||0,height:1.0});});
+  }
+  function applyAIAnalysis(a){stageAIAnalysis(a);if(!a||typeof a!=='object')return;
     if(a.roof_type&&a.roof_type!=='unknown'){roofType=String(a.roof_type).toLowerCase();var ss=document.getElementById('roof-shape-select');if(ss)ss.value=roofType;}
     var pitch=Number(a.pitch_degrees);if(Number.isFinite(pitch)){currentPitch=Math.max(0,Math.min(40,pitch));var ps=document.getElementById('roof-pitch-select');if(ps){var vals=[0,5,10,15,20,25,30,35,40],near=vals.reduce(function(x,y){return Math.abs(y-pitch)<Math.abs(x-pitch)?y:x;},0);ps.value=String(near);}}
     buildRoofModel(currentPitch,currentPanels);
@@ -502,32 +657,32 @@
     var locationId=typeof SIGNIX_LOCATION_ID!=='undefined'?SIGNIX_LOCATION_ID:null; if(!locationId)return;
     var badge=document.getElementById('roof3d-satellite-badge'), status=document.getElementById('roof-ai-status');
     siteModelLoading=true;
-    if(badge){badge.textContent='Actual site model · loading…';badge.classList.remove('is-error');}
-    if(status)status.textContent='Reconstructing the selected rooftop from location-specific elevation data…';
+    if(badge){badge.textContent='Rooftop data · loading…';badge.classList.remove('is-error');}
+    if(status)status.textContent='Loading available location-specific rooftop data…';
     try{
       var res=await fetch('/api/roof-model/'+encodeURIComponent(locationId)+'?high_fidelity=1',{credentials:'same-origin',headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}});
       var data=await res.json(); if(!res.ok||!data.available)throw new Error(data.error||'Location-specific roof data unavailable');
       siteRoofModel=data; siteModelLoading=false;
       shadeGrid=data.shade||null; shadeSide=shadeGrid&&shadeGrid.shadeSide?shadeGrid.shadeSide:null;
-      var segs=(data.roof&&data.roof.segments)||[];
-      if(badge){badge.textContent=data.dsmAvailable?'Actual site roof · DSM':(data.shadeAvailable?'Actual site roof · Solar roof segments + shade map':'Actual site roof · Solar roof segments');badge.classList.add('is-ready');}
+      var segs=data.surfaces||[];
+      if(badge){badge.textContent=data.mode==='provider'?'Rooftop reconstruction · provider':(data.mode==='prototype_fixture'?'Rooftop reconstruction · prototype fixture':'Rooftop reconstruction · user boundary');badge.classList.add('is-ready');badge.classList.remove('is-error');}
       var shadeBadge=document.getElementById('roof3d-shade-badge');
       if(shadeBadge){if(shadeGrid&&shadeSide){shadeBadge.textContent='Shade-aware · low-sun side '+shadeSide+' · panels avoid shaded zone';shadeBadge.classList.add('is-ready');shadeBadge.classList.remove('is-error');}else{shadeBadge.textContent='Shade analysis · unavailable at this location';shadeBadge.classList.add('is-error');}}
       if(status){
-        var sourceText=data.dsmAvailable?'high-resolution elevation data':'Google roof-segment data';
-        status.textContent='Actual site roof reconstructed from '+sourceText+' · '+segs.length+' roof plane'+(segs.length===1?'':'s')+' detected.'+(shadeGrid&&shadeSide?' · Shaded/low-sun side: '+shadeSide+'. Panels avoid that zone.':'')+(data.warnings&&data.warnings.length?' '+data.warnings[0]: '');
+        status.textContent=(data.status_badge?.detail||'Rooftop reconstruction loaded')+' · '+segs.length+' surface fragment'+(segs.length===1?'':'s')+'. Your drawn boundary remains authoritative.';
       }
       buildRoofModel(currentPitch,currentPanels);
-    }catch(err){siteModelLoading=false;shadeGrid=null;shadeSide=null;var shadeBadge=document.getElementById('roof3d-shade-badge');if(shadeBadge){shadeBadge.textContent='Shade analysis · unavailable';shadeBadge.classList.add('is-error');}if(badge){badge.textContent='Actual site roof · unavailable';badge.classList.add('is-error');}if(status)status.textContent='Site roof request failed: '+err.message+' (check Solar API access/coverage).';console.warn('Site roof reconstruction failed',err);}
+    }catch(err){siteModelLoading=false;shadeGrid=null;shadeSide=null;var shadeBadge=document.getElementById('roof3d-shade-badge');if(shadeBadge){shadeBadge.textContent='Shade analysis · unavailable';shadeBadge.classList.add('is-error');}if(badge){badge.textContent='Geographic rooftop data · unavailable';badge.classList.add('is-error');}if(status)status.textContent='Using the user-drawn roof fallback. Location-specific data unavailable: '+err.message;console.warn('Site roof data unavailable',err);}
   }
 
   function init(){var container=document.getElementById('roof-3d-container'),fallback=document.getElementById('roof-3d-fallback');if(!container)return;if(typeof THREE==='undefined'||!hasWebGL()){if(fallback){fallback.classList.remove('hidden');fallback.style.display='block';}return;}if(fallback){fallback.classList.add('hidden');fallback.style.display='none';}
-    parseGeometryFromGlobals();var width=container.clientWidth||600,height=container.clientHeight||360;scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(38,width/height,.1,1000);renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.setSize(width,height);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;container.appendChild(renderer.domElement);
+    parseGeometryFromGlobals();var width=container.clientWidth||600,height=container.clientHeight||420,aspect=width/height,view=18;scene=new THREE.Scene();camera=new THREE.OrthographicCamera(-view*aspect/2,view*aspect/2,view/2,-view/2,.1,1000);renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.setSize(width,height);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;container.appendChild(renderer.domElement);
     scene.add(new THREE.HemisphereLight(0xeaf5ff,0x6c6259,1.3));var sun=new THREE.DirectionalLight(0xffe7bf,2.35);sun.position.set(12,24,15);sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;scene.add(sun);rootGroup=new THREE.Group();scene.add(rootGroup);
-    var ps=document.getElementById('roof-pitch-select'),ss=document.getElementById('roof-shape-select');currentPitch=ps?Number(ps.value)||0:0;roofType=ss?ss.value:'flat';currentPanels=Number(typeof PANEL_COUNT!=='undefined'?PANEL_COUNT:0)||0;buildRoofModel(currentPitch,currentPanels);bindCameraControls(container);bindOrientationCompass();loadSatelliteReference();loadSiteRoofModel();
+    var ps=document.getElementById('roof-pitch-select'),ss=document.getElementById('roof-shape-select');currentPitch=ps?Number(ps.value)||0:0;roofType=ss?ss.value:'flat';currentPanels=Number(typeof PANEL_COUNT!=='undefined'?PANEL_COUNT:0)||0;buildRoofModel(currentPitch,currentPanels);bindCameraControls(container);bindSurfaceSelection(container);bindOrientationCompass();bindPlannerControls();loadSiteRoofModel();
     if(ps)ps.addEventListener('change',function(){currentPitch=Number(this.value)||0;aiPlanes=[];buildRoofModel(currentPitch,currentPanels);});if(ss)ss.addEventListener('change',function(){roofType=this.value;aiPlanes=[];buildRoofModel(currentPitch,currentPanels);});
-    function animate(){animationId=requestAnimationFrame(animate);if(rootGroup&&!userInteracted)rootGroup.rotation.y+=.0007;renderer.render(scene,camera);}animate();window.addEventListener('resize',function(){var w=container.clientWidth,h=container.clientHeight;if(w<10||h<10)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);});
-    window.SIGNIX_ROOF3D={setPitch:function(d){currentPitch=Number(d)||0;buildRoofModel(currentPitch,currentPanels);},setPanelCount:function(n){currentPanels=Number(n)||0;buildRoofModel(currentPitch,currentPanels);},setPitchAndPanels:function(d,n){currentPitch=Number(d)||0;currentPanels=Number(n)||0;buildRoofModel(currentPitch,currentPanels);},setRoofType:setRoofType,setOrientation:setOrientation,applyOrientation:applyOrientation,undoOrientation:undoOrientation,applyAIAnalysis:applyAIAnalysis,applyAIStructures:applyAIStructures,hasRealFootprint:function(){return!!(localRing&&localRing.length>=3);},getPlacedPanelCount:function(){return document.getElementById('roof-3d-panel-status')?.textContent||'';},loadSiteRoofModel:loadSiteRoofModel};
+    function animate(){animationId=requestAnimationFrame(animate);renderer.render(scene,camera);}animate();function resizeViewer(){var w=container.clientWidth,h=container.clientHeight;if(w<10||h<10)return;renderer.setSize(w,h);updateCamera();}window.addEventListener('resize',resizeViewer);if(typeof ResizeObserver!=='undefined')new ResizeObserver(resizeViewer).observe(container);
+    window.SIGNIX_ROOF3D={setPitch:function(d){currentPitch=Number(d)||0;buildRoofModel(currentPitch,currentPanels);},setPanelCount:function(n){currentPanels=Number(n)||0;buildRoofModel(currentPitch,currentPanels);},setPitchAndPanels:function(d,n){currentPitch=Number(d)||0;currentPanels=Number(n)||0;buildRoofModel(currentPitch,currentPanels);},setRoofType:setRoofType,setOrientation:setOrientation,applyOrientation:applyOrientation,undoOrientation:undoOrientation,stageAIAnalysis:stageAIAnalysis,applyAIAnalysis:applyAIAnalysis,applyAIStructures:applyAIStructures,hasRealFootprint:function(){return!!(localRing&&localRing.length>=3);},getPlacedPanelCount:function(){return document.getElementById('roof-3d-panel-status')?.textContent||'';},loadSiteRoofModel:loadSiteRoofModel,setViewMode:setViewMode,setLayerVisible:function(name,visible){var input=document.querySelector('[data-roof3d-layer="'+name+'"]');if(input)input.checked=Boolean(visible);applyLayerVisibility();},debugState:function(){return{mode:siteRoofModel?.mode||'user_fallback',viewMode:viewMode,surfaces:reconstructedSurfaces.map(function(s){return{id:s.id,parentId:s.parentId,pitch:s.pitch,azimuth:s.azimuth,normal:s.normal,valid:s.valid,panelCount:s.panelCount,polygon:s.polygon};}),structures:reconstructedStructures.map(function(s){return{id:s.id,polygon:s.polygon,height:s.height};}),orientation:currentOrientationDeg,cameraAzimuth:cameraAzimuth,cameraElevation:cameraElevation,cameraViewSize:cameraDistance,cameraTarget:[cameraTargetX,cameraTargetY,cameraTargetZ],northDegrees:0,layers:{roofPlanes:roofPlanesGroup?.visible,panels:panelsGroup?.visible,structures:structuresGroup?.visible,boundary:boundaryGroup?.visible}};}};
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+  if(typeof window!=='undefined')window.SIGNIX_ROOF3D_GEOMETRY={cameraFrameForBounds:cameraFrameForBounds,pointInRing:pointInRing,polygonFits:polygonFits,sumSurfacePanelCounts:sumSurfacePanelCounts,layoutCapacityKw:layoutCapacityKw,layoutDiffersFromEstimate:layoutDiffersFromEstimate};
+  if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();}
 })();

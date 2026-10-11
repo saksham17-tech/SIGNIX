@@ -76,6 +76,28 @@ def initialize_database():
     # --- subsidy_scheme versioning columns (additive; safe on existing DBs) ---
 
     tables = set(inspector.get_table_names())
+    if "rooftop_design_sources" in tables:
+        source_cols = {
+            column["name"]
+            for column in inspector.get_columns("rooftop_design_sources")
+        }
+        source_additions = {
+            "availability_status": "VARCHAR(32) DEFAULT 'available' NOT NULL",
+            "coverage": "JSON",
+            "cache_key": "VARCHAR(160)",
+            "reusable_until": "TIMESTAMP",
+            "is_usable": "BOOLEAN DEFAULT FALSE NOT NULL",
+        }
+        for column_name, column_type in source_additions.items():
+            if column_name not in source_cols:
+                db.session.execute(
+                    text(
+                        f"ALTER TABLE rooftop_design_sources "
+                        f"ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+        db.session.commit()
+
     if "subsidy_scheme" in tables:
         subsidy_cols = {
             column["name"] for column in inspector.get_columns("subsidy_scheme")

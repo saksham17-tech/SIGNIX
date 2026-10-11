@@ -15,7 +15,7 @@ def app():
     Forces a fresh SQLAlchemy engine on the process-wide ``db`` extension so
     tests cannot share tables across fixtures (avoids UNIQUE email collisions).
     """
-    fd, db_path = tempfile.mkstemp(prefix="signix_test_", suffix=".db", dir="/tmp")
+    fd, db_path = tempfile.mkstemp(prefix="signix_test_", suffix=".db")
     os.close(fd)
     uri = f"sqlite:///{db_path}"
     os.environ["DATABASE_URL"] = uri

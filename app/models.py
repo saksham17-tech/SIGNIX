@@ -109,6 +109,13 @@ class UserLocation(db.Model):
 
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
+    rooftop_designs = db.relationship(
+        "RooftopDesign",
+        back_populates="location",
+        cascade="all, delete-orphan",
+        order_by="RooftopDesign.revision_number",
+    )
+
     def to_dict(self):
         from app.geo import canonicalize_stored_ring
 
@@ -194,6 +201,172 @@ class UserLocation(db.Model):
             "suitability_rating": self.suitability_rating,
             "extras": self.extras,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class RooftopDesign(db.Model):
+    """One immutable revision of rooftop-design state for an estimate.
+
+    Authoritative fields are deliberately separate from advisory provider
+    records. Creating or reviewing a design produces a new revision; financial
+    fields on ``UserLocation`` are never modified by this model.
+    """
+
+    __tablename__ = "rooftop_designs"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_location_id",
+            "revision_number",
+            name="uq_rooftop_design_location_revision",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_location_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user_locations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    location = db.relationship("UserLocation", back_populates="rooftop_designs")
+
+    revision_number = db.Column(db.Integer, nullable=False)
+    schema_version = db.Column(db.String(32), nullable=False, default="1.0")
+    review_status = db.Column(db.String(32), nullable=False, default="draft")
+    is_current = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+    # Authoritative state: user-created geometry and explicitly accepted data.
+    authoritative_roof_geojson = db.Column(db.JSON, nullable=False)
+    manual_obstructions_geojson = db.Column(db.JSON, nullable=True)
+    accepted_roof_planes = db.Column(db.JSON, nullable=True)
+    accepted_obstructions_geojson = db.Column(db.JSON, nullable=True)
+    roof_type = db.Column(db.String(32), nullable=True)
+    pitch_degrees = db.Column(db.Float, nullable=True)
+    azimuth_degrees = db.Column(db.Float, nullable=True)
+    elevation_meters = db.Column(db.Float, nullable=True)
+    height_meters = db.Column(db.Float, nullable=True)
+
+    # Future renderer outputs are persisted but not interpreted here.
+    panel_layout = db.Column(db.JSON, nullable=True)
+    shade_analysis = db.Column(db.JSON, nullable=True)
+    diagnostics = db.Column(db.JSON, nullable=True)
+
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    sources = db.relationship(
+        "RooftopDesignSource",
+        back_populates="design",
+        cascade="all, delete-orphan",
+        order_by="RooftopDesignSource.id",
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_location_id": self.user_location_id,
+            "revision_number": self.revision_number,
+            "schema_version": self.schema_version,
+            "review_status": self.review_status,
+            "is_current": bool(self.is_current),
+            "authoritative": {
+                "roof_boundary": self.authoritative_roof_geojson,
+                "manual_obstructions": self.manual_obstructions_geojson,
+                "accepted_roof_planes": self.accepted_roof_planes,
+                "accepted_obstructions": self.accepted_obstructions_geojson,
+                "roof_metadata": {
+                    "roof_type": self.roof_type,
+                    "pitch_degrees": self.pitch_degrees,
+                    "azimuth_degrees": self.azimuth_degrees,
+                    "elevation_meters": self.elevation_meters,
+                    "height_meters": self.height_meters,
+                },
+            },
+            "advisory_sources": [source.to_dict() for source in self.sources],
+            "panel_layout": self.panel_layout,
+            "shade_analysis": self.shade_analysis,
+            "diagnostics": self.diagnostics,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class RooftopDesignSource(db.Model):
+    """Advisory provider data attached to one rooftop-design revision."""
+
+    __tablename__ = "rooftop_design_sources"
+
+    id = db.Column(db.Integer, primary_key=True)
+    rooftop_design_id = db.Column(
+        db.Integer,
+        db.ForeignKey("rooftop_designs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    design = db.relationship("RooftopDesign", back_populates="sources")
+
+    provider = db.Column(db.String(64), nullable=False)
+    data_type = db.Column(db.String(64), nullable=False)
+    retrieved_at = db.Column(db.DateTime, nullable=True)
+    source_version = db.Column(db.String(128), nullable=True)
+    confidence = db.Column(db.String(64), nullable=True)
+    quality = db.Column(db.String(64), nullable=True)
+    availability_status = db.Column(
+        db.String(32), nullable=False, default="available", index=True
+    )
+    coverage = db.Column(db.JSON, nullable=True)
+    cache_key = db.Column(db.String(160), nullable=True, index=True)
+    reusable_until = db.Column(db.DateTime, nullable=True)
+    is_usable = db.Column(db.Boolean, nullable=False, default=False)
+    review_status = db.Column(db.String(32), nullable=False, default="pending")
+    external_reference = db.Column(db.JSON, nullable=True)
+    raw_payload = db.Column(db.JSON, nullable=True)
+    analysis_result = db.Column(db.JSON, nullable=True)
+    review_state = db.Column(db.JSON, nullable=True)
+    diagnostics = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "provider": self.provider,
+            "data_type": self.data_type,
+            "retrieved_at": self.retrieved_at.isoformat()
+            if self.retrieved_at
+            else None,
+            "source_version": self.source_version,
+            "confidence": self.confidence,
+            "quality": self.quality,
+            "availability_status": self.availability_status,
+            "coverage": self.coverage,
+            "cache_key": self.cache_key,
+            "reusable_until": self.reusable_until.isoformat()
+            if self.reusable_until
+            else None,
+            "is_usable": bool(self.is_usable),
+            "review_status": self.review_status,
+            "external_reference": self.external_reference,
+            "raw_payload": self.raw_payload,
+            "analysis_result": self.analysis_result,
+            "review_state": self.review_state,
+            "diagnostics": self.diagnostics,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

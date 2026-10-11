@@ -108,73 +108,92 @@
 
   <!-- 3D rooftop preview + customization -->
   {% set pc = loc.panel_count or (loc.extras.panel_estimate.panel_count if loc.extras and loc.extras.panel_estimate else none) %}
+  {% set module_wattage = (loc.extras.panel_estimate.module_wattage_w if loc.extras and loc.extras.panel_estimate else none) %}
   {% set roof_area = loc.roof_area_sqm or loc.usable_area_sqm or 0 %}
   {% set usable_area = loc.usable_area_sqm or loc.roof_area_sqm or 0 %}
   <div class="viz-3d-card signix-roof-card" id="viz-3d-card">
     <div class="roof3d-toolbar">
       <div>
-        <div class="roof3d-kicker">ROOFTOP VISUALIZATION</div>
-        <h3>See your solar system on the selected roof</h3>
-        <p>Location-specific 3D roof reconstruction when geographic elevation data is available; your drawn boundary remains the final selection.</p>
+        <div class="roof3d-kicker">ROOFTOP DESIGNER</div>
+        <h3>Your selected rooftop, reconstructed for solar planning</h3>
+        <p>Every surface is constrained to the boundary you drew. Provider and prototype geometry remains advisory.</p>
       </div>
-      <div class="roof3d-controls">
-        <label class="roof3d-control-label" for="roof-shape-select">Roof type</label>
-        <select id="roof-shape-select" class="roof-pitch-select" aria-label="Roof type">
-          <option value="flat">Flat</option>
-          <option value="gable">Gable</option>
-          <option value="hip">Hip</option>
-          <option value="shed">Shed</option>
-        </select>
-        <label class="roof3d-control-label" for="roof-pitch-select">Pitch</label>
-        <select id="roof-pitch-select" class="roof-pitch-select" aria-label="Roof pitch">
-          <option value="0">0°</option>
-          <option value="5">5°</option>
-          <option value="10">10°</option>
-          <option value="15">15°</option>
-          <option value="20">20°</option>
-          <option value="25">25°</option>
-          <option value="30">30°</option>
-          <option value="35">35°</option>
-          <option value="40">40°</option>
-        </select>
-        <button type="button" class="btn btn-secondary roof3d-site-button" id="roof-site-btn">⌂ Build actual site roof</button><button type="button" class="btn btn-secondary roof3d-ai-button" id="roof-ai-btn">✨ AI analyze structures</button>
-        <button type="button" class="btn btn-secondary roof3d-apply-button" id="roof-ai-apply-btn" disabled>Apply detected structures</button>
-        <button type="button" class="btn btn-secondary roof3d-undo-button" id="roof-undo-btn">Undo</button>
+      <div id="roof3d-provider-status" class="roof3d-provider-status loading" role="status" aria-live="polite">
+        <strong>Preparing rooftop model</strong><span>Checking the saved reconstruction state</span>
       </div>
     </div>
 
-    <div class="roof3d-stage" id="roof3d-stage">
-      <div id="roof-3d-container" class="roof3d-canvas-wrap">
-        <div class="roof3d-skyline"></div>
-        <div class="roof3d-compass" aria-label="Solar orientation control">
-          <div class="roof3d-compass-ring">
-            <span class="c-n">N</span><span class="c-ne">NE</span><span class="c-e">E</span>
-            <span class="c-se">SE</span><span class="c-s">S</span><span class="c-sw">SW</span>
-            <span class="c-w">W</span><span class="c-nw">NW</span>
-            <i class="roof3d-sun" role="button" aria-label="Solar orientation handle">●</i>
-          </div>
+    <div class="roof3d-workspace">
+      <aside class="roof3d-inspector" aria-label="Rooftop model information">
+        <section>
+          <span class="roof3d-inspector-label">ROOF SURFACES</span>
+          <div id="roof3d-surface-list"><p class="roof3d-empty">Loading roof surfaces…</p></div>
+        </section>
+        <section>
+          <span class="roof3d-inspector-label">DETECTED STRUCTURES</span>
+          <div id="roof3d-structure-list"><p class="roof3d-empty">Loading structures…</p></div>
+        </section>
+        <section>
+          <span class="roof3d-inspector-label">ORIENTATION</span>
+          <div class="roof3d-north-row"><span>True north</span><strong>0° N</strong></div>
+          <label class="roof3d-azimuth-field" for="roof3d-panel-azimuth"><span>Panel orientation</span><span><input id="roof3d-panel-azimuth" type="number" min="0" max="359" step="1" value="{{ loc.orientation_deg if loc.orientation_deg is not none else 180 }}">°</span></label>
+          <button type="button" id="roof3d-orientation-apply" class="roof3d-inspector-action" disabled>Apply orientation</button>
+          <button type="button" id="roof3d-orientation-undo" class="roof3d-inspector-action secondary">Reset orientation</button>
+        </section>
+        <section>
+          <span class="roof3d-inspector-label">LAYERS</span>
+          <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="roof-planes" checked> Roof planes</label>
+          <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="panels" checked> Panels</label>
+          <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="structures" checked> Structures</label>
+          <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="boundary" checked> Boundary</label>
+        </section>
+      </aside>
+
+      <div class="roof3d-stage" id="roof3d-stage">
+        <div class="roof3d-viewbar" aria-label="Rooftop view mode">
+          <button type="button" class="active" data-roof3d-view="3d">3D Model</button>
+          <button type="button" data-roof3d-view="satellite" disabled>Satellite</button>
+          <button type="button" data-roof3d-view="top">Top View</button>
+          <button type="button" data-roof3d-view="wireframe">Wireframe</button>
+          <button type="button" id="roof3d-reset-view" class="roof3d-reset-view">Reset view</button>
         </div>
-        <div class="roof3d-orientation-pill"><strong id="roof3d-orientation">Solar orientation</strong><span id="roof3d-orientation-detail">Panels follow the selected roof plane</span><small id="roof3d-orientation-factor"></small><small id="roof3d-orientation-delta"></small></div>
-        <div id="roof-3d-panel-status" class="roof3d-status-pill">Building panel layout…</div>
-        <div id="roof-ai-status" class="roof3d-ai-status">AI roof analysis pending…</div>
-        <div id="roof3d-satellite-badge" class="roof3d-satellite-badge">Satellite reference · loading</div><div id="roof3d-shade-badge" class="roof3d-shade-badge" aria-live="polite">Shade analysis · waiting</div><div class="roof3d-orientation-actions"><button type="button" id="roof3d-orientation-apply" class="roof3d-orientation-action" disabled>Apply orientation</button><button type="button" id="roof3d-orientation-undo" class="roof3d-orientation-action secondary">Reset</button></div>
-        <div id="roof-3d-fallback" class="hidden roof3d-fallback">3D preview unavailable on this device. Your roof area and system sizing remain available below.</div>
+        <div id="roof-3d-container" class="roof3d-canvas-wrap">
+          <div class="roof3d-compass" aria-label="True north and panel orientation">
+            <span class="roof3d-true-north">TRUE NORTH</span>
+            <div class="roof3d-compass-ring">
+              <span class="c-n">N</span><span class="c-ne">NE</span><span class="c-e">E</span>
+              <span class="c-se">SE</span><span class="c-s">S</span><span class="c-sw">SW</span>
+              <span class="c-w">W</span><span class="c-nw">NW</span>
+              <i class="roof3d-sun" role="button" aria-label="Panel orientation handle">●</i>
+            </div>
+          </div>
+          <div class="roof3d-orientation-pill"><strong id="roof3d-orientation">Panel orientation</strong><span id="roof3d-orientation-detail">Panels follow each reconstructed roof plane</span><small id="roof3d-orientation-factor"></small><small id="roof3d-orientation-delta"></small></div>
+          <div id="roof-3d-panel-status" class="roof3d-status-pill">Building physical panel layout…</div>
+          <div id="roof-ai-status" class="roof3d-ai-status">Loading rooftop reconstruction…</div>
+          <div id="roof3d-satellite-badge" class="roof3d-satellite-badge">Satellite reference · checking</div>
+          <div id="roof3d-shade-badge" class="roof3d-shade-badge" aria-live="polite">Shade analysis · waiting</div>
+          <div id="roof-3d-fallback" class="hidden roof3d-fallback">3D preview unavailable on this device. Your roof geometry and system metrics remain available.</div>
+        </div>
+        <div class="roof3d-instruction"><span>Drag to orbit</span><span>Shift + drag to pan</span><span>Scroll to zoom</span><span class="roof3d-azimuth-help">Drag compass to orient modules</span></div>
       </div>
-      <div class="roof3d-instruction"><span class="roof3d-drag-icon">↻</span> Drag to inspect the roof <span>•</span> Scroll to zoom <span>•</span> <span class="roof3d-azimuth-help">Drag the compass to change solar orientation</span> <span>•</span> Panels use physical module dimensions</div>
     </div>
 
     <div class="roof3d-metrics">
-      <div class="roof3d-metric"><span>Roof area</span><strong>{{ '%.0f'|format(roof_area|float) }} <small>m²</small></strong></div>
-      <div class="roof3d-metric"><span>Usable area</span><strong>{{ '%.0f'|format(usable_area|float) }} <small>m²</small></strong></div>
-      <div class="roof3d-metric"><span>PV modules</span><strong id="roof3d-module-count">{{ pc or 0 }}</strong></div>
-      <div class="roof3d-metric"><span>System size</span><strong>{{ loc.system_size or 0 }} <small>kW</small></strong></div>
-      <div class="roof3d-metric roof3d-metric-accent"><span>Estimated generation</span><strong><span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation or 0) }}</span> <small>kWh/yr</small></strong></div>
+      <div class="roof3d-metric"><span>Roof area</span><strong>{% if roof_area %}{{ '%.1f'|format(roof_area|float) }} <small>m²</small>{% else %}Unavailable{% endif %}</strong></div>
+      <div class="roof3d-metric"><span>Usable area</span><strong>{% if usable_area %}{{ '%.1f'|format(usable_area|float) }} <small>m²</small>{% else %}Unavailable{% endif %}</strong></div>
+      <div class="roof3d-metric"><span>Physical layout</span><strong id="roof3d-module-count">{{ pc if pc is not none else 'Unavailable' }}{% if pc is not none %} <small>modules</small>{% endif %}</strong></div>
+      <div class="roof3d-metric"><span>Layout DC capacity</span><strong id="roof3d-layout-capacity">{% if pc is not none and module_wattage %}{{ '%.2f'|format((pc|float * module_wattage|float) / 1000) }} <small>kWp</small>{% else %}Unavailable{% endif %}</strong></div>
+      <div class="roof3d-metric"><span>Selected estimate</span><strong>{% if loc.system_size %}{{ loc.system_size }} <small>kW</small>{% else %}Unavailable{% endif %}</strong></div>
+      <div class="roof3d-metric"><span>Max roof capacity</span><strong>{% if loc.roof_capacity_kw %}{{ loc.roof_capacity_kw }} <small>kW</small>{% else %}Unavailable{% endif %}</strong></div>
+      <div class="roof3d-metric"><span>Annual generation</span><strong>{% if loc.annual_generation %}<span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation) }}</span> <small>kWh/yr</small>{% else %}Unavailable{% endif %}</strong></div>
+      <div class="roof3d-metric roof3d-metric-accent"><span>Specific yield</span><strong>{% if loc.specific_yield %}{{ '{:,.0f}'.format(loc.specific_yield) }} <small>kWh/kWp</small>{% else %}Unavailable{% endif %}</strong></div>
     </div>
 
     <p class="roof3d-disclaimer">
-      Your drawn rooftop boundary remains authoritative. AI is used to estimate roof type, pitch and visible structures; it does not silently change your saved financial estimate.
-      <span id="roof-ai-details">AI analysis is advisory.</span>
+      Your drawn rooftop boundary remains authoritative. Reconstructed and AI-derived geometry is advisory and never silently changes saved financial inputs.
+      <span id="roof-ai-details">Prototype geometry is explicitly identified above.</span>
     </p>
+    <div class="roof3d-secondary-actions"><button type="button" class="btn btn-secondary roof3d-ai-button" id="roof-ai-btn">AI analyze structures</button><button type="button" class="btn btn-secondary roof3d-apply-button" id="roof-ai-apply-btn" disabled>Apply detected structures</button><button type="button" class="btn btn-secondary roof3d-site-button" id="roof-site-btn">Reload rooftop model</button><button type="button" class="btn btn-secondary roof3d-undo-button" id="roof-undo-btn">Reset exploration</button></div>
   </div>
 
   <!-- Dial-style customization controls (PRD §3.2) -->
@@ -252,6 +271,25 @@
     <div class="area-row"><span>Total Roof Area</span><span>{{ loc.roof_area_sqm }} m²</span></div>
     <div class="area-row obstructed"><span>Obstructed Area (tanks, rooms, coverings)</span><span>-{{ loc.obstructed_area_sqm or 0 }} m²</span></div>
     <div class="area-row total"><span>Usable Area</span><span>{{ loc.usable_area_sqm }} m²</span></div>
+  </div>
+
+  <div class="report-visual-grid report-visual-grid-overview">
+    <article class="report-visual report-visual-wide">
+      <div class="report-visual-heading">
+        <div><span class="report-eyebrow">PHYSICAL FEASIBILITY</span><h3>Roof utilization</h3></div>
+        <strong>{{ loc.chart_data.roof_utilization.usable_pct if loc.chart_data.roof_utilization.usable_pct is not none else '—' }}% usable</strong>
+      </div>
+      <div class="chart-frame chart-frame-compact"><canvas id="roofUtilizationChart"></canvas></div>
+      <p class="chart-note">Panel-covered and setback areas are shown as unavailable until a validated physical layout exists.</p>
+    </article>
+    <article class="report-visual">
+      <div class="report-visual-heading"><div><span class="report-eyebrow">SYSTEM OUTPUT</span><h3>Capacity to generation</h3></div></div>
+      <div class="system-output-link">
+        <strong>{{ loc.system_size }} <small>kWp</small></strong><span>→</span><strong><span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation or 0) }}</span> <small>kWh/year</small></strong>
+      </div>
+      <div class="orientation-meter"><span style="width:{{ ((loc.orientation_factor or 0) * 100)|round|int }}%"></span></div>
+      <p class="chart-note">Orientation factor: {{ ((loc.orientation_factor or 0) * 100)|round|int }}% · Azimuth {{ loc.orientation_deg if loc.orientation_deg is not none else 'unavailable' }}{% if loc.orientation_deg is not none %}°{% endif %} · Recommended tilt {{ loc.recommended_tilt_deg if loc.recommended_tilt_deg is not none else 'unavailable' }}{% if loc.recommended_tilt_deg is not none %}°{% endif %}</p>
+    </article>
   </div>
 
 
@@ -367,7 +405,7 @@
 </section>
 
 <section id="tab-generation" class="tab-panel">
-  <h2>Monthly Energy Generation (Year 1)</h2>
+  <div class="report-section-heading"><span class="report-eyebrow">ENERGY FORECAST</span><h2>When the system produces energy</h2><p>Year-one monthly output and the persisted 25-year degradation forecast.</p></div>
   <p style="font-size:13px;color:var(--gray);margin-top:0;">
     Adjusted for roof orientation
     {% if loc.orientation_label %}({{ loc.orientation_label }}){% endif %}
@@ -377,29 +415,72 @@
     <div class="stat-card"><span class="label">Annual generation</span><span class="value"><span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation or 0) }}</span> kWh</span></div>
     <div class="stat-card"><span class="label">System size</span><span class="value">{{ loc.system_size }} kW</span></div>
     <div class="stat-card"><span class="label">Specific yield</span><span class="value">{% if loc.specific_yield %}{{ '{:,.0f}'.format(loc.specific_yield) }}{% else %}—{% endif %} kWh/kWp</span></div>
-    <div class="stat-card"><span class="label">Lifetime energy (25 yr)</span><span class="value">{% if loc.lifetime_kwh %}{{ '{:,.0f}'.format(loc.lifetime_kwh) }}{% else %}—{% endif %} kWh</span></div>
+    <div class="stat-card"><span class="label">Lifetime energy (25 yr)</span><span class="value">{% if loc.chart_data.energy.lifetime_generation %}{{ '{:,.0f}'.format(loc.chart_data.energy.lifetime_generation) }}{% else %}—{% endif %} kWh</span></div>
   </div>
-  <div class="chart-card">
-    <canvas id="monthlyGenerationChart" height="120"></canvas>
+  <div class="report-visual-grid energy-grid">
+  <article class="report-visual report-visual-wide">
+    <div class="report-visual-heading"><h3>Monthly generation</h3><strong><span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.chart_data.energy.annual_generation or 0) }}</span> kWh/year</strong></div>
+    <div class="chart-frame"><canvas id="monthlyGenerationChart"></canvas></div>
     <p id="monthly-chart-empty" class="hidden" style="font-size:13px;color:var(--gray);padding:12px 0;">Monthly breakdown not available for this estimate.</p>
+  </article>
+  <article class="report-visual">
+    <div class="report-visual-heading"><h3>Annual energy flow</h3></div>
+    <div class="chart-frame"><canvas id="energyFlowChart"></canvas></div>
+    <p id="energy-flow-empty" class="chart-empty hidden"></p>
+  </article>
+  </div>
+
+  <div class="report-visual-grid">
+    <article class="report-visual report-visual-wide">
+      <div class="report-visual-heading"><h3>Consumption vs solar</h3></div>
+      <div class="chart-frame"><canvas id="consumptionGenerationChart"></canvas></div>
+      <p id="consumption-chart-empty" class="chart-empty hidden"></p>
+    </article>
+    <article class="report-visual">
+      <div class="report-visual-heading"><h3>Representative monthly bill impact</h3></div>
+      <div class="chart-frame chart-frame-compact"><canvas id="monthlyBillChart"></canvas></div>
+      <p id="monthly-bill-empty" class="chart-empty hidden"></p>
+    </article>
   </div>
 
   <h2 style="margin-top:28px;">25-Year Generation Forecast</h2>
   <p style="font-size:13px;color:var(--gray);margin-top:0;">
-    Includes panel degradation (~0.5%/year). Bars trend gently downward.
+    Includes the estimator's {{ loc.chart_data.energy.degradation_pct }}% annual module degradation assumption.
   </p>
-  <div class="chart-card">
-    <canvas id="generation25yrChart" height="140"></canvas>
+  <article class="report-visual">
+    <div class="report-visual-heading"><h3>25-year generation</h3><strong>{% if loc.chart_data.energy.lifetime_generation %}{{ '{:,.0f}'.format(loc.chart_data.energy.lifetime_generation) }} kWh lifetime{% else %}Unavailable{% endif %}</strong></div>
+    <div class="chart-frame chart-frame-tall"><canvas id="generation25yrChart"></canvas></div>
     <p id="gen25-chart-empty" class="hidden" style="font-size:13px;color:var(--gray);padding:12px 0;">25-year series will appear after charts load.</p>
-  </div>
+  </article>
 </section>
 
 
 
 <section id="tab-financial" class="tab-panel">
-  <h2>Financial Summary</h2>
-  <div class="chart-card">
-    <canvas id="financialDonutChart" height="180"></canvas>
+  <div class="report-section-heading"><span class="report-eyebrow">PROJECT ECONOMICS</span><h2>Financial progression</h2><p>Cashflow and savings use the persisted SIGNIX financial model.</p></div>
+  <div class="report-visual-grid">
+    <article class="report-visual report-visual-wide">
+      <div class="report-visual-heading"><h3>Payback and cumulative cashflow</h3><strong>{% if loc.chart_data.financial.payback_year %}Break-even {{ loc.chart_data.financial.payback_year }} years{% else %}No break-even in series{% endif %}</strong></div>
+      <div class="chart-frame chart-frame-tall"><canvas id="cashflowChart"></canvas></div>
+      <p id="cashflow-chart-empty" class="chart-empty hidden"></p>
+    </article>
+    <article class="report-visual">
+      <div class="report-visual-heading"><h3>Investment composition</h3></div>
+      <div class="chart-frame"><canvas id="financialDonutChart"></canvas></div>
+    </article>
+  </div>
+  <div class="report-visual-grid">
+    <article class="report-visual report-visual-wide">
+      <div class="report-visual-heading"><h3>Annual and cumulative savings</h3></div>
+      <div class="chart-frame chart-frame-tall"><canvas id="annualSavingsChart"></canvas></div>
+      <p id="annual-savings-empty" class="chart-empty hidden"></p>
+    </article>
+    <article class="report-visual">
+      <div class="report-visual-heading"><h3>25-year electricity cost</h3></div>
+      <div class="chart-frame"><canvas id="electricityCostChart"></canvas></div>
+      <p id="electricity-cost-empty" class="chart-empty hidden"></p>
+      {% if loc.chart_data.electricity_cost.available %}<p class="chart-note">Starts at ₹{{ loc.chart_data.electricity_cost.starting_grid_tariff_per_kwh }}/kWh with {{ loc.chart_data.electricity_cost.tariff_escalation_pct }}% annual escalation{% if loc.chart_data.electricity_cost.includes_annual_om %}; includes the persisted annual O&amp;M reserve{% endif %}. Effective solar cost: {% if loc.chart_data.electricity_cost.effective_solar_cost_per_kwh is not none %}₹{{ loc.chart_data.electricity_cost.effective_solar_cost_per_kwh }}/kWh{% else %}unavailable{% endif %}.</p>{% endif %}
+    </article>
   </div>
   <div class="financial-summary-box" style="margin-top:14px;">
     <div class="fin-row"><span>PV System Cost (mid estimate)</span><span>₹{{ '{:,.0f}'.format(loc.system_cost or 0) }}</span></div>
@@ -415,7 +496,7 @@
     <div class="fin-row total"><span>Net Investment</span><span>₹{{ '{:,.0f}'.format(loc.net_investment or 0) }}</span></div>
     <div class="fin-row"><span>{{ _('Nominal payback') }} <small>(escalating tariff)</small></span><span>{% set nom = (loc.extras or {}).get('nominal_payback_years', loc.payback_years) %}{% if nom %}{{ nom }} yrs{% else %}—{% endif %}</span></div>
     <div class="fin-row"><span>{{ _('Simple payback') }} <small>(flat tariff)</small></span><span>{% set simp = (loc.extras or {}).get('simple_payback_years') %}{% if simp %}{{ simp }} yrs{% else %}—{% endif %}</span></div>
-    <div class="fin-row"><span>Est. 25-year bill savings</span><span>₹{{ '{:,.0f}'.format((loc.monthly_savings or 0) * 12 * 25) }}</span></div>
+    <div class="fin-row"><span>Est. 25-year bill savings</span><span>{% if loc.chart_data.financial.cumulative_savings %}₹{{ '{:,.0f}'.format(loc.chart_data.financial.cumulative_savings[-1]) }}{% else %}—{% endif %}</span></div>
     {% if loc.lcoe %}
     <div class="fin-row"><span>Levelised cost of energy</span><span>₹{{ loc.lcoe }}/kWh</span></div>
     {% endif %}
@@ -530,11 +611,7 @@
   </div>
   {% endif %}
 
-  <h2>Cashflow Over 25 Years</h2>
-  <p style="font-size:12px;color:var(--gray);">Includes 0.5%/yr degradation and assumed tariff escalation in the nominal projection.</p>
-  <div class="chart-card">
-    <canvas id="cashflowChart" height="140"></canvas>
-  </div>
+  <p class="chart-note">Cashflow includes {{ loc.chart_data.energy.degradation_pct }}% annual module degradation and {{ (loc.extras or {}).get('tariff_escalation_pct', 4) }}% tariff escalation. O&amp;M is displayed as a planning reference and is not silently subtracted from the persisted cashflow series.</p>
 </section>
 
 <section id="tab-capex-dpa" class="tab-panel">
@@ -549,23 +626,48 @@
   {% if not fc %}{% set fc = loc.financing_comparison if loc.financing_comparison is defined else none %}{% endif %}
 
   {% if fc %}
-  <div class="financing-controls" id="financing-controls" style="display:flex;gap:20px;flex-wrap:wrap;margin:14px 0 18px;">
-    <label style="display:flex;flex-direction:column;font-size:13px;">
-      Down-payment %
-      <input type="range" id="dpa-down-pct" min="0" max="50" step="5" value="{{ fc.assumptions.down_payment_pct|int }}" style="width:180px;">
-      <span id="dpa-down-pct-label">{{ fc.assumptions.down_payment_pct|int }}%</span>
-    </label>
-    <label style="display:flex;flex-direction:column;font-size:13px;">
-      DPA Tenure (years)
-      <input type="range" id="dpa-tenure" min="3" max="7" step="1" value="{{ fc.assumptions.dpa_tenure_years }}" style="width:180px;">
-      <span id="dpa-tenure-label">{{ fc.assumptions.dpa_tenure_years }} yrs</span>
-    </label>
-    <label style="display:flex;flex-direction:column;font-size:13px;">
-      Interest rate %
-      <input type="range" id="dpa-rate" min="8" max="12" step="0.5" value="{{ fc.assumptions.dpa_rate_pct }}" style="width:180px;">
-      <span id="dpa-rate-label">{{ fc.assumptions.dpa_rate_pct }}%</span>
-    </label>
+  <div class="financing-controls" id="financing-controls"
+       data-endpoint="{{ url_for('estimate.api_financing_preview', location_id=loc.id) }}">
+    <div class="financing-controls-heading">
+      <div><span class="report-eyebrow">DPA ASSUMPTIONS</span><h3>Model the repayment structure</h3></div>
+      <p id="financing-controls-status" class="financing-controls-status" role="status" aria-live="polite">Using saved assumptions</p>
+    </div>
+    <div class="financing-control-grid">
+      <label class="financing-control" for="dpa-down-payment-range">
+        <span>Down payment</span>
+        <span class="financing-control-inputs">
+          <input id="dpa-down-payment-range" type="range" min="0" max="100" step="1" value="{{ fc.assumptions.down_payment_pct }}">
+          <input id="dpa-down-payment-value" type="number" min="0" max="100" step="1" value="{{ fc.assumptions.down_payment_pct }}" inputmode="decimal">
+          <small>%</small>
+        </span>
+      </label>
+      <label class="financing-control" for="dpa-interest-rate-range">
+        <span>Interest rate</span>
+        <span class="financing-control-inputs">
+          <input id="dpa-interest-rate-range" type="range" min="0" max="50" step="0.1" value="{{ fc.assumptions.dpa_rate_pct }}">
+          <input id="dpa-interest-rate-value" type="number" min="0" max="50" step="0.1" value="{{ fc.assumptions.dpa_rate_pct }}" inputmode="decimal">
+          <small>% p.a.</small>
+        </span>
+      </label>
+      <label class="financing-control" for="dpa-tenure-range">
+        <span>Loan tenure</span>
+        <span class="financing-control-inputs">
+          <input id="dpa-tenure-range" type="range" min="1" max="30" step="1" value="{{ fc.assumptions.dpa_tenure_years }}">
+          <input id="dpa-tenure-value" type="number" min="1" max="30" step="1" value="{{ fc.assumptions.dpa_tenure_years }}" inputmode="numeric">
+          <small>years</small>
+        </span>
+      </label>
+    </div>
+    <div class="financing-derived" aria-label="Calculated DPA values">
+      <div><span>System CAPEX</span><strong id="fc-system-cost">₹{{ '{:,.0f}'.format(loc.net_investment or 0) }}</strong></div>
+      <div><span>Down payment</span><strong id="fc-summary-down">₹{{ '{:,.0f}'.format(fc.dpa.down_payment or 0) }}</strong></div>
+      <div><span>Financed</span><strong id="fc-summary-loan">₹{{ '{:,.0f}'.format(fc.dpa.loan_amount or 0) }}</strong></div>
+      <div><span>Monthly EMI</span><strong id="fc-summary-emi">₹{{ '{:,.0f}'.format(fc.dpa.monthly_emi or 0) }}</strong></div>
+      <div><span>Total repayment</span><strong id="fc-summary-repayment">₹{{ '{:,.0f}'.format(fc.dpa.total_repayment or ((fc.dpa.total_cash_outflow or 0) - (fc.dpa.down_payment or 0))) }}</strong></div>
+      <div><span>Equity IRR</span><strong id="fc-summary-irr">{% if fc.dpa.equity_irr_pct is not none %}{{ fc.dpa.equity_irr_pct }}%{% else %}—{% endif %}</strong></div>
+    </div>
   </div>
+  <p class="chart-note">Changes are previewed by the authenticated SIGNIX financing engine; saved estimate inputs are not overwritten.</p>
 
   <div class="comparison-scroll">
     <table class="comparison-table" id="financing-comparison-table">
@@ -603,6 +705,21 @@
           <td id="fc-dpa-emi">₹{{ '{:,.0f}'.format(fc.dpa.monthly_emi or 0) }}</td>
         </tr>
         <tr>
+          <th>Annual payment</th>
+          <td>—</td>
+          <td id="fc-dpa-annual">₹{{ '{:,.0f}'.format(fc.dpa.annual_emi or 0) }}</td>
+        </tr>
+        <tr>
+          <th>Total repayment</th>
+          <td>—</td>
+          <td id="fc-dpa-repayment">₹{{ '{:,.0f}'.format(fc.dpa.total_repayment or ((fc.dpa.total_cash_outflow or 0) - (fc.dpa.down_payment or 0))) }}</td>
+        </tr>
+        <tr>
+          <th>Total interest</th>
+          <td>—</td>
+          <td id="fc-dpa-interest">₹{{ '{:,.0f}'.format(fc.dpa.total_interest or 0) }}</td>
+        </tr>
+        <tr>
           <th>Payback period</th>
           <td id="fc-capex-payback">{% if fc.capex.payback_years %}{{ fc.capex.payback_years }} yrs{% else %}—{% endif %}</td>
           <td id="fc-dpa-payback">{% if fc.dpa.payback_years %}{{ fc.dpa.payback_years }} yrs{% else %}—{% endif %}</td>
@@ -617,21 +734,51 @@
           <td id="fc-capex-out">₹{{ '{:,.0f}'.format(fc.capex.total_cash_outflow or 0) }}</td>
           <td id="fc-dpa-out">₹{{ '{:,.0f}'.format(fc.dpa.total_cash_outflow or 0) }}</td>
         </tr>
+        <tr>
+          <th>Year-1 solar savings</th>
+          <td>₹{{ '{:,.0f}'.format(loc.chart_data.financial.annual_savings[0] if loc.chart_data.financial.annual_savings else 0) }}</td>
+          <td>₹{{ '{:,.0f}'.format(loc.chart_data.financial.annual_savings[0] if loc.chart_data.financial.annual_savings else 0) }}</td>
+        </tr>
+        <tr>
+          <th>Annual O&amp;M planning reserve</th>
+          <td>₹{{ '{:,.0f}'.format((loc.extras or {}).get('annual_om', 0) or 0) }}</td>
+          <td>₹{{ '{:,.0f}'.format((loc.extras or {}).get('annual_om', 0) or 0) }}</td>
+        </tr>
+        {% if loc.chart_data.financing.available %}
+        <tr>
+          <th>25-year cumulative net position</th>
+          <td id="fc-capex-position">₹{{ '{:,.0f}'.format(loc.chart_data.financing.capex.cumulative_cashflow[-1]) }}</td>
+          <td id="fc-dpa-position">₹{{ '{:,.0f}'.format(loc.chart_data.financing.dpa.cumulative_cashflow[-1]) }}</td>
+        </tr>
+        {% endif %}
+        <tr>
+          <th>25-year gross solar savings</th>
+          <td>₹{{ '{:,.0f}'.format(loc.chart_data.financial.cumulative_savings[-1] if loc.chart_data.financial.cumulative_savings else 0) }}</td>
+          <td>₹{{ '{:,.0f}'.format(loc.chart_data.financial.cumulative_savings[-1] if loc.chart_data.financial.cumulative_savings else 0) }}</td>
+        </tr>
       </tbody>
     </table>
   </div>
   <p class="checklist-disclaimer" style="margin-top:10px;">{{ fc.assumptions.note }}</p>
   <p class="monetary-disclaimer">{{ monetary_disclaimer }}</p>
 
-  <h3 style="margin-top:22px;">Cash outflow vs savings (25 years)</h3>
-  <canvas id="financingComparisonChart" height="140"></canvas>
+  <article class="report-visual" style="margin-top:20px;">
+    <div class="report-visual-heading"><h3>CAPEX vs DPA cumulative position</h3><strong>25-year comparison</strong></div>
+    <div class="chart-frame chart-frame-tall"><canvas id="financingComparisonChart"></canvas></div>
+    <p id="financing-chart-empty" class="chart-empty hidden"></p>
+  </article>
   {% else %}
   <p>Financing comparison data is not available for this estimate. Re-run the estimate to generate it.</p>
   {% endif %}
 </section>
 
 <section id="tab-environmental" class="tab-panel">
-  <h2>Environmental Impact</h2>
+  <div class="report-section-heading"><span class="report-eyebrow">ENVIRONMENTAL OUTCOME</span><h2>Annual avoided emissions</h2><p>Equivalents use the existing SIGNIX calculation pipeline.</p></div>
+  <div class="environment-hero">
+    <span>Annual CO₂ avoided</span><strong>{{ loc.co2_reduction_tons }} <small>tonnes/year</small></strong>
+    <div class="environment-rule"></div>
+    <p>Lifetime CO₂ is not shown because the current model does not persist a degradation-adjusted emissions series.</p>
+  </div>
   <div class="stat-grid">
     <div class="stat-card"><span class="label">CO₂ Reduction / Year</span><span class="value">-{{ loc.co2_reduction_tons }} Tons</span></div>
     <div class="stat-card"><span class="label">Per kW Reference</span><span class="value">1.4 Tons/kW/Year</span></div>
@@ -697,25 +844,20 @@
   {% endif %}
 </section>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/vendor/chart.umd.min.js') }}"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+  let REPORT_CHART_DATA = {{ loc.chart_data | tojson }};
   const MONTHLY_DATA = {{ loc.monthly_data | tojson }};
   const SYSTEM_SIZE = {{ loc.system_size | tojson }};
   const ANNUAL_GENERATION = {{ (loc.annual_generation or 0) | tojson }};
   const NET_INVESTMENT = {{ loc.net_investment | tojson }};
-  const ANNUAL_SAVINGS = {{ ((loc.monthly_savings or 0) * 12) | tojson }};
   const MONTHLY_SAVINGS = {{ (loc.monthly_savings or 0) | tojson }};
   const SUBSIDY_AMOUNT = {{ (loc.subsidy_amount or 0) | tojson }};
-  const TOTAL_25YR_SAVINGS = {{ ((loc.monthly_savings or 0) * 12 * 25) | tojson }};
   const BATTERY_COST = {{ (loc.battery_cost or 0) | tojson }};
-  const GENERATION_25YR = {{ (loc.generation_25yr or (loc.extras or {}).get('generation_25yr') or []) | tojson }};
-  const FINANCING_COMPARISON = {{ (loc.financing_comparison or (loc.extras or {}).get('financing_comparison') or none) | tojson }};
-  const CASHFLOW_25YR = {{ (loc.cashflow_25yr or (loc.extras or {}).get('cashflow_25yr') or []) | tojson }};
-  const TARIFF_ESCALATION = {{ ((loc.tariff_escalation_pct or (loc.extras or {}).get('tariff_escalation_pct') or 4) / 100) | tojson }};
-  const DEGRADATION = 0.005;
   const ROOF_AREA_SQM = {{ (loc.usable_area_sqm or loc.roof_area_sqm or 50) | tojson }};
   const PANEL_COUNT = {{ (loc.panel_count or (loc.extras.panel_estimate.panel_count if loc.extras and loc.extras.panel_estimate else 0) or 0) | tojson }};
+  const MODULE_WATTAGE_W = {{ ((loc.extras.panel_estimate.module_wattage_w if loc.extras and loc.extras.panel_estimate else none) or none) | tojson }};
   const ORIENTATION_DEG = {{ (loc.orientation_deg if loc.orientation_deg is not none else 180) | tojson }};
   const SIGNIX_LOCATION_ID = {{ loc.id | tojson }};
   const SIGNIX_LOCATION_LAT = {{ loc.latitude | tojson }};
@@ -736,6 +878,7 @@
 
 
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/report-charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/roof3d.js') }}"></script>
 <script src="{{ url_for('static', filename='js/roof-ai.js') }}"></script>
 

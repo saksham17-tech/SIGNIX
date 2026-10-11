@@ -44,6 +44,7 @@ def get_report_context(location_id, user_id):
             loc_dict["net_investment"] / (loc_dict["monthly_savings"] * 12), 1
         )
     loc_dict["cashflow_25yr"] = extras.get("cashflow_25yr")
+    loc_dict["annual_savings"] = extras.get("annual_savings")
     for key in (
         "inverter",
         "inverter_type",
@@ -77,9 +78,17 @@ def get_report_context(location_id, user_id):
         "sensitivity",
         "panel_count",
         "panel_estimate",
+        "exported_kwh",
+        "export_value",
+        "net_metering_mode",
+        "feed_in_tariff",
     ):
         if key in extras and extras[key] is not None:
             loc_dict[key] = extras[key]
+
+    from app.services.report_chart_data import build_report_chart_data
+
+    loc_dict["chart_data"] = build_report_chart_data(loc_dict)
 
     # Always expose confidence for templates/PDF (derive if older rows lack extras).
     if not loc_dict.get("irradiance_confidence"):

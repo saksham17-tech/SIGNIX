@@ -561,6 +561,7 @@ body.ignix-body {
   border-bottom: 3px solid transparent; margin-bottom: -2px;
 }
 .tab-btn.active { color: var(--indigo); border-bottom-color: var(--indigo); font-weight: 800; }
+.hidden { display: none !important; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
@@ -595,6 +596,52 @@ body.ignix-body {
 .chart-card {
   background: #fff; border-radius: 14px; box-shadow: var(--shadow); padding: 16px; margin-bottom: 14px;
 }
+.report-section-heading { margin: 0 0 20px; max-width: 760px; }
+.report-section-heading h2 { margin: 3px 0 5px; font-size: clamp(22px, 2.6vw, 32px); color: var(--indigo); }
+.report-section-heading p, .chart-note { color: var(--gray); font-size: 12px; line-height: 1.55; }
+.report-eyebrow { display: block; color: var(--success); font-size: 10px; font-weight: 800; letter-spacing: 1.4px; }
+.report-visual-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, .8fr); gap: 16px; margin: 16px 0; }
+.report-visual { min-width: 0; padding: 18px 0 8px; border-top: 1px solid var(--border); }
+.report-visual-wide { min-width: 0; }
+.report-visual-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+.report-visual-heading h3 { margin: 0; color: var(--purple-dark); font-size: 15px; }
+.report-visual-heading > strong { color: var(--indigo); font-size: 14px; text-align: right; }
+.chart-frame { position: relative; height: 250px; min-height: 210px; }
+.chart-frame-compact { height: 190px; min-height: 170px; }
+.chart-frame-tall { height: 290px; }
+.chart-frame.chart-frame-unavailable { height: 0; min-height: 0; }
+.chart-empty { display: flex; align-items: center; min-height: 150px; padding: 18px; background: #f7f5fa; border-left: 3px solid var(--border); color: var(--gray); font-size: 13px; line-height: 1.5; }
+.chart-empty:not(.hidden) { min-height: 0; margin: 8px 0 0; }
+.financing-controls { margin: 18px 0; padding: 18px 20px; background: #f7f5fa; border-left: 4px solid var(--success); }
+.financing-controls-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+.financing-controls-heading h3 { margin: 3px 0 0; color: var(--purple-dark); font-size: 18px; }
+.financing-controls-status { margin: 0; color: var(--gray); font-size: 12px; text-align: right; }
+.financing-controls-status.is-loading { color: var(--indigo); }
+.financing-controls-status.is-error { color: #a53e2c; }
+.financing-control-grid { display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 18px; }
+.financing-control { display: grid; gap: 8px; color: var(--purple-dark); font-size: 13px; font-weight: 700; }
+.financing-control-inputs { display: grid; grid-template-columns: minmax(90px, 1fr) 72px auto; align-items: center; gap: 8px; }
+.financing-control-inputs input[type="range"] { width: 100%; accent-color: var(--success); }
+.financing-control-inputs input[type="number"] { width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; font: inherit; }
+.financing-control-inputs small { color: var(--gray); white-space: nowrap; font-weight: 600; }
+.financing-derived { display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+.financing-derived > div { padding: 0 12px; border-left: 1px solid var(--border); }
+.financing-derived > div:first-child { padding-left: 0; border-left: 0; }
+.financing-derived span { display: block; color: var(--gray); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.financing-derived strong { display: block; margin-top: 5px; color: var(--purple-dark); font-size: 16px; }
+.system-output-link { display: grid; grid-template-columns: 1fr auto 1.4fr; align-items: center; gap: 12px; min-height: 92px; }
+.system-output-link strong { color: var(--indigo); font-size: 25px; line-height: 1; }
+.system-output-link strong:last-child { color: var(--success); }
+.system-output-link small { display: block; margin-top: 6px; color: var(--gray); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.system-output-link > span { color: var(--accent-orange); font-size: 24px; }
+.orientation-meter { height: 7px; overflow: hidden; border-radius: 999px; background: #ece8f1; }
+.orientation-meter span { display: block; height: 100%; border-radius: inherit; background: var(--success); transition: width .35s ease; }
+.environment-hero { padding: 22px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.environment-hero > span { color: var(--gray); font-size: 12px; text-transform: uppercase; letter-spacing: .8px; }
+.environment-hero strong { display: block; margin: 5px 0 14px; color: var(--success); font-size: clamp(34px, 5vw, 56px); line-height: 1; }
+.environment-hero strong small { color: var(--gray); font-size: 13px; }
+.environment-rule { width: min(100%, 620px); height: 8px; border-radius: 99px; background: linear-gradient(90deg, var(--success), var(--accent-orange)); }
+.environment-hero p { max-width: 680px; margin: 12px 0 0; color: var(--gray); font-size: 12px; }
 .orientation-badge, .battery-badge {
   display: inline-flex; align-items: center; gap: 6px;
   background: #efe8ff; color: var(--indigo); font-size: 12px; font-weight: 700;
@@ -665,6 +712,7 @@ body.ignix-body {
   .savings-overview-grid { grid-template-columns: 1fr; }
   .savings-opportunity { align-items: flex-start; flex-direction: column; }
   .page-content { padding: 8px 16px 32px; }
+  .report-visual-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .hero-row, .why-grid, .options-grid, .equivalents-grid { grid-template-columns: 1fr; }
@@ -682,6 +730,14 @@ body.ignix-body {
   .opportunity-metrics { align-items: flex-start; flex-wrap: wrap; gap: 14px 20px; }
   .savings-card { min-height: 190px; }
   .savings-card strong { font-size: 32px; }
+  .report-visual-heading { flex-direction: column; gap: 5px; }
+  .report-visual-heading > strong { text-align: left; }
+  .chart-frame, .chart-frame-tall { height: 235px; }
+  .financing-controls-heading { display: block; }
+  .financing-controls-status { margin-top: 6px; text-align: left; }
+  .financing-control-grid { grid-template-columns: 1fr; }
+  .financing-derived { grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 14px 0; }
+  .system-output-link strong { font-size: 20px; }
 }
 
 /* ---------- Assistant Floating Chat Widget ---------- */
@@ -1819,3 +1875,85 @@ body.ignix-body {
 .roof3d-shade-badge.is-ready { color:#526b59; }
 .roof3d-shade-badge.is-error { color:#9b5d28; }
 @media (max-width:900px){.roof3d-shade-badge{top:82px;right:12px}}
+
+/* Location-specific rooftop designer */
+.signix-roof-card { padding:22px; border:1px solid #dfe4e2; background:#fff; box-shadow:0 18px 45px rgba(35,45,48,.09); }
+.roof3d-toolbar { align-items:center; margin-bottom:16px; }
+.roof3d-toolbar > div:first-child { max-width:720px; }
+.roof3d-toolbar h3 { font-size:22px; letter-spacing:-.02em; }
+.roof3d-provider-status { display:flex; flex-direction:column; align-items:flex-end; max-width:330px; padding:9px 12px; border-radius:9px; background:#f3f5f4; border:1px solid #dfe4e2; text-align:right; }
+.roof3d-provider-status strong { color:#46504f; font-size:11px; }
+.roof3d-provider-status span { margin-top:2px; color:#788180; font-size:9px; line-height:1.35; }
+.roof3d-provider-status.prototype { background:#fff8ea; border-color:#ead7ae; }
+.roof3d-provider-status.prototype strong { color:#9a6416; }
+.roof3d-provider-status.provider { background:#edf8f3; border-color:#c7e5d7; }
+.roof3d-provider-status.provider strong { color:#176846; }
+.roof3d-provider-status.fallback { background:#f7f4f1; border-color:#e4d9cf; }
+.roof3d-workspace { display:grid; grid-template-columns:240px minmax(0,1fr); min-height:590px; border:1px solid #dfe4e2; border-radius:14px; overflow:hidden; background:#f3f6f5; }
+.roof3d-inspector { padding:17px 15px; background:#fbfcfb; border-right:1px solid #dfe4e2; overflow:auto; }
+.roof3d-inspector section { padding:0 0 17px; margin:0 0 17px; border-bottom:1px solid #e6e9e8; }
+.roof3d-inspector section:last-child { margin-bottom:0; border-bottom:0; }
+.roof3d-inspector-label { display:block; margin-bottom:9px; color:#77807e; font-size:9px; font-weight:800; letter-spacing:1.2px; }
+.roof3d-surface-item { display:block; width:100%; padding:9px 8px; margin:0 0 5px; border:1px solid transparent; border-radius:8px; background:transparent; text-align:left; cursor:pointer; font-family:inherit; }
+.roof3d-surface-item:hover,.roof3d-surface-item.active { background:#fff6e7; border-color:#e8cfaa; }
+.roof3d-surface-item strong,.roof3d-structure-item strong { display:block; color:#313b3a; font-size:12px; }
+.roof3d-surface-item span,.roof3d-structure-item span { display:block; margin-top:3px; color:#616b69; font-size:10px; }
+.roof3d-surface-item small,.roof3d-structure-item small { display:block; margin-top:3px; color:#8a9290; font-size:9px; text-transform:capitalize; }
+.roof3d-structure-item { padding:7px 8px; margin-bottom:4px; border-left:2px solid #aab4b2; }
+.roof3d-empty { margin:0; color:#8a9290; font-size:10px; line-height:1.45; }
+.roof3d-north-row { display:flex; justify-content:space-between; color:#68716f; font-size:11px; }
+.roof3d-north-row strong { color:#283130; }
+.roof3d-azimuth-field { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:10px 0; color:#4e5957; font-size:11px; }
+.roof3d-azimuth-field input { width:62px; padding:6px 7px; border:1px solid #ccd4d2; border-radius:6px; background:#fff; font:inherit; font-weight:700; }
+.roof3d-inspector-action { width:100%; margin-top:5px; padding:7px 9px; border:1px solid #c47b1d; border-radius:7px; background:#c47b1d; color:#fff; font:700 10px Inter,sans-serif; cursor:pointer; }
+.roof3d-inspector-action.secondary { background:#fff; border-color:#d9dfdd; color:#596361; }
+.roof3d-inspector-action:disabled { opacity:.48; cursor:not-allowed; }
+.roof3d-layer { display:flex; align-items:center; gap:7px; padding:5px 0; color:#4c5755; font-size:11px; cursor:pointer; }
+.roof3d-layer input { accent-color:#b87420; }
+.roof3d-stage { position:relative; border:0; border-radius:0; background:#e8efed; }
+.roof3d-viewbar { display:flex; align-items:center; gap:4px; min-height:43px; padding:6px 10px; border-bottom:1px solid #dce3e1; background:rgba(255,255,255,.94); }
+.roof3d-viewbar button { padding:6px 10px; border:0; border-radius:6px; background:transparent; color:#68716f; font:700 10px Inter,sans-serif; cursor:pointer; }
+.roof3d-viewbar button.active { background:#293331; color:#fff; }
+.roof3d-viewbar button:disabled { opacity:.38; cursor:not-allowed; }
+.roof3d-viewbar .roof3d-reset-view { margin-left:auto; border:1px solid #d9dfdd; background:#fff; color:#4e5957; }
+.roof3d-canvas-wrap { height:505px; min-height:420px; background:radial-gradient(circle at 52% 36%,#f5f8f7 0,#e3ebe8 52%,#d3ddda 100%); }
+.roof3d-compass { left:auto; right:18px; bottom:18px; width:146px; height:116px; transform:none; opacity:.95; }
+.roof3d-true-north { position:absolute; left:50%; top:-17px; transform:translateX(-50%); color:#66706e; font-size:7px; font-weight:800; letter-spacing:.8px; white-space:nowrap; }
+.roof3d-compass-ring { border:1px solid rgba(65,78,75,.34); background:rgba(250,252,251,.68); backdrop-filter:blur(4px); }
+.roof3d-compass-ring:after { border-color:rgba(65,78,75,.2); }
+.roof3d-compass-ring span { background:transparent; color:#56615f; font-size:8px; }
+.roof3d-orientation-pill { top:15px; left:15px; }
+.roof3d-status-pill { bottom:13px; left:13px; max-width:56%; }
+.roof3d-ai-status { right:13px; top:15px; bottom:auto; max-width:44%; }
+.roof3d-satellite-badge { top:58px; right:13px; }
+.roof3d-shade-badge { top:88px; right:13px; }
+.roof3d-instruction { display:flex; justify-content:center; gap:18px; padding:9px 12px; }
+.roof3d-instruction span { margin:0; color:#6e7775; }
+.roof3d-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:12px; }
+.roof3d-metric:nth-child(4n) { border-right:0; }
+.roof3d-metric:nth-child(n+5) { border-top:1px solid #e5e7e9; }
+.roof3d-secondary-actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }
+
+@media (max-width:980px){
+  .roof3d-workspace { grid-template-columns:1fr; }
+  .roof3d-inspector { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; border-right:0; border-bottom:1px solid #dfe4e2; }
+  .roof3d-inspector section { margin:0; }
+  .roof3d-canvas-wrap { height:440px; }
+  .roof3d-metrics { grid-template-columns:repeat(2,1fr); }
+  .roof3d-metric { border-right:1px solid #e5e7e9; }
+  .roof3d-metric:nth-child(2n) { border-right:0; }
+  .roof3d-metric:nth-child(n+3) { border-top:1px solid #e5e7e9; }
+}
+@media (max-width:600px){
+  .signix-roof-card { margin-inline:-8px; padding:14px; }
+  .roof3d-provider-status { align-items:flex-start; text-align:left; }
+  .roof3d-inspector { grid-template-columns:1fr; max-height:360px; }
+  .roof3d-canvas-wrap { height:390px; min-height:340px; }
+  .roof3d-viewbar { overflow-x:auto; }
+  .roof3d-viewbar button { white-space:nowrap; }
+  .roof3d-compass { width:124px; height:98px; right:10px; }
+  .roof3d-ai-status,.roof3d-satellite-badge,.roof3d-shade-badge { display:none; }
+  .roof3d-instruction { justify-content:flex-start; overflow-x:auto; }
+  .roof3d-instruction span { white-space:nowrap; }
+  .roof3d-metrics { grid-template-columns:repeat(2,1fr); }
+}

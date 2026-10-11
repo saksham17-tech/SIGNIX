@@ -355,104 +355,49 @@ def roof_model(location_id):
     ring = _polygon_coords(location)
     if not ring:
         return jsonify(error="A saved rooftop polygon is required first"), 400
-    key = _key()
-    if not key:
-        return jsonify(error="Google Solar API is not configured", configured=False), 503
-    lat, lng = _selection_point(ring)
     try:
-        building = _building_payload(lat, lng)
-        center = building.get("center") or {}
-        b_lat = float(center.get("latitude", lat))
-        b_lng = float(center.get("longitude", lng))
-        matched_distance = _meters(lat, lng, b_lat, b_lng)
-        if matched_distance > 60:
-            return jsonify(
-                error="Google Solar API matched a different nearby building",
-                matched_distance_m=round(matched_distance, 1),
-                configured=True,
-            ), 409
-
-        solar = building.get("solarPotential") or {}
-        segments = []
-        for idx, seg in enumerate(solar.get("roofSegmentStats") or []):
-            item = {
-                "segmentIndex": idx,
-                "pitchDegrees": seg.get("pitchDegrees"),
-                "azimuthDegrees": seg.get("azimuthDegrees"),
-                "areaMeters2": (seg.get("stats") or {}).get("areaMeters2"),
-                "groundAreaMeters2": (seg.get("stats") or {}).get("groundAreaMeters2"),
-                "center": seg.get("center"),
-                "boundingBox": seg.get("boundingBox"),
-                "planeHeightAtCenterMeters": seg.get("planeHeightAtCenterMeters"),
-            }
-            # Make the segment immediately usable by the Three.js fallback.
-            bb = seg.get("boundingBox") or {}
-            sw, ne = bb.get("sw") or {}, bb.get("ne") or {}
-            if all(k in sw for k in ("latitude", "longitude")) and all(k in ne for k in ("latitude", "longitude")):
-                item["footprint"] = [
-                    [float(sw["longitude"]), float(sw["latitude"])],
-                    [float(ne["longitude"]), float(sw["latitude"])],
-                    [float(ne["longitude"]), float(ne["latitude"])],
-                    [float(sw["longitude"]), float(ne["latitude"])],
-                ]
-            segments.append(item)
-
-        # Building Insights is useful even when Data Layers/DSM is unavailable.
-        # Do not make an expensive/coverage-sensitive DSM request a hard dependency.
-        layers = None
-        layer_warning = None
-        dsm = None
-        shade = None
         high_fidelity = str(request.args.get("high_fidelity", "1")).lower() not in {"0", "false", "no"}
-        if high_fidelity:
-            try:
-                layers = _data_layers(lat, lng)
-                try:
-                    dsm = _dsm_grid(location, ring, layers)
-                except Exception as exc:
-                    layer_warning = f"DSM unavailable: {exc}"
-                try:
-                    shade = _flux_grid(location, ring, layers)
-                except Exception as exc:
-                    layer_warning = (layer_warning + " | " if layer_warning else "") + f"Shade map unavailable: {exc}"
-            except Exception as exc:
-                layer_warning = f"Solar Data Layers unavailable: {exc}"
+        from app.services import (
+            rooftop_design_service,
+            rooftop_ingestion_service,
+            rooftop_reconstruction_service,
+        )
 
-        imagery_quality = building.get("imageryQuality") or (layers or {}).get("imageryQuality")
-        warnings = []
-        if layer_warning:
-            warnings.append(layer_warning)
-        source = "google_solar_dsm" if dsm else "google_solar_building_insights"
-        return jsonify({
-            "available": True,
-            "source": source,
-            "dsmAvailable": bool(dsm),
-            "shadeAvailable": bool(shade),
-            "shade": shade,
-            "imageryQuality": imagery_quality,
-            "imageryDate": building.get("imageryDate") or (layers or {}).get("imageryDate"),
-            "matchedDistanceMeters": round(matched_distance, 1),
-            "warnings": warnings,
-            "building": {
-                "center": building.get("center"),
-                "boundingBox": building.get("boundingBox"),
-                "postalCode": building.get("postalCode"),
-            },
-            "roof": {
-                "wholeAreaMeters2": (solar.get("wholeRoofStats") or {}).get("areaMeters2"),
-                "maxArrayPanelsCount": solar.get("maxArrayPanelsCount"),
-                "panelWidthMeters": solar.get("panelWidthMeters"),
-                "panelHeightMeters": solar.get("panelHeightMeters"),
-                "segments": segments,
-            },
-            "layers": {
-                "dsm": _proxy_url(location_id, "dsm") if layers and layers.get("dsmUrl") else None,
-                "rgb": _proxy_url(location_id, "rgb") if layers and layers.get("rgbUrl") else None,
-                "mask": _proxy_url(location_id, "mask") if layers and layers.get("maskUrl") else None,
-            },
-            "selectedRoof": ring,
-            "dsmGrid": dsm,
-        })
+        prototype_fixture = bool(
+            current_app.config.get("ROOFTOP_PROTOTYPE_FIXTURE", True)
+        )
+        design, design_data = rooftop_design_service.get_current_design(
+            location_id, current_user.id
+        )
+        if design is None:
+            design = rooftop_design_service.create_revision(
+                location_id, current_user.id, {}
+            )
+            design_data = design.to_dict()
+
+        provider_payload = None
+        if not prototype_fixture or _key():
+            result = rooftop_ingestion_service.ingest(
+                location_id,
+                current_user.id,
+                providers=["google_solar"],
+                include_data_layers=high_fidelity,
+            )
+            design, design_data = rooftop_design_service.get_current_design(
+                location_id, current_user.id
+            )
+            provider_payload = rooftop_ingestion_service.legacy_roof_model_payload(
+                design
+            )
+            provider_payload["cached"] = result["used_cache"]
+
+        payload = rooftop_reconstruction_service.build_reconstruction(
+            location,
+            design_data=design_data,
+            provider_payload=provider_payload,
+            prototype_fixture=prototype_fixture,
+        )
+        return jsonify(payload), 200 if payload.get("available") else 422
     except Exception as exc:
         current_app.logger.warning("Roof reconstruction unavailable: %s", exc)
         return jsonify(error=str(exc), configured=True), 502

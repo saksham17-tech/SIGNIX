@@ -1715,6 +1715,8 @@ def build_financing_comparison(
             "annual_rate_pct": rate,
             "monthly_emi": monthly_emi,
             "annual_emi": annual_emi,
+            "total_repayment": round(emi_info["total_payment"], 2),
+            "total_interest": round(emi_info["total_interest"], 2),
             "payback_years": dpa_payback,
             "equity_irr_pct": round(dpa_irr * 100, 1) if dpa_irr is not None else None,
             "total_cash_outflow": round(down_payment + emi_info["total_payment"], 2),

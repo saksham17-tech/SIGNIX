@@ -14,6 +14,12 @@ class Config:
     GEMINI_ROOF_MODEL = os.environ.get("GEMINI_ROOF_MODEL", GEMINI_MODEL)
     GOOGLE_SOLAR_API_KEY = os.environ.get("GOOGLE_SOLAR_API_KEY")
     GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
+    ROOFTOP_EXTERNAL_CACHE_DAYS = int(
+        os.environ.get("ROOFTOP_EXTERNAL_CACHE_DAYS", "30")
+    )
+    ROOFTOP_PROTOTYPE_FIXTURE = os.environ.get(
+        "ROOFTOP_PROTOTYPE_FIXTURE", "true"
+    ).strip().lower() in {"1", "true", "yes", "on"}
     ASSISTANT_DAILY_MESSAGE_LIMIT = 20
 
     # Prototype uses SQLite. For PostgreSQL in production, set DATABASE_URL, e.g.
