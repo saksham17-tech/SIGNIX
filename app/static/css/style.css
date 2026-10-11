@@ -1905,11 +1905,24 @@ body.ignix-body {
 .roof3d-north-row strong { color:#283130; }
 .roof3d-azimuth-field { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:10px 0; color:#4e5957; font-size:11px; }
 .roof3d-azimuth-field input { width:62px; padding:6px 7px; border:1px solid #ccd4d2; border-radius:6px; background:#fff; font:inherit; font-weight:700; }
+.roof3d-layout-mode-field { display:block; color:#4e5957; font-size:11px; }
+.roof3d-layout-mode-field span { display:block; margin-bottom:6px; }
+.roof3d-layout-mode-field select { width:100%; padding:7px 8px; border:1px solid #ccd4d2; border-radius:6px; background:#fff; color:#394341; font:700 10px Inter,sans-serif; }
+.roof3d-layout-help { display:block; margin-top:7px; color:#858e8c; font-size:9px; line-height:1.45; }
 .roof3d-inspector-action { width:100%; margin-top:5px; padding:7px 9px; border:1px solid #c47b1d; border-radius:7px; background:#c47b1d; color:#fff; font:700 10px Inter,sans-serif; cursor:pointer; }
 .roof3d-inspector-action.secondary { background:#fff; border-color:#d9dfdd; color:#596361; }
 .roof3d-inspector-action:disabled { opacity:.48; cursor:not-allowed; }
 .roof3d-layer { display:flex; align-items:center; gap:7px; padding:5px 0; color:#4c5755; font-size:11px; cursor:pointer; }
 .roof3d-layer input { accent-color:#b87420; }
+.roof3d-shade-legend { display:grid; grid-template-columns:1fr 1fr; gap:5px 8px; margin-top:9px; color:#6b7472; font-size:9px; }
+.roof3d-shade-legend span { display:flex; align-items:center; gap:5px; }
+.roof3d-shade-legend i { width:8px; height:8px; border-radius:2px; background:#4d9d75; }
+.roof3d-shade-legend i.shaded { background:#6d587a; }
+.roof3d-shade-legend i.setback { background:#d99b42; }
+.roof3d-shade-legend i.obstruction { background:#b95145; }
+.roof3d-shade-legend i.unknown { background:#8c9591; }
+.roof3d-shade-legend i.verified-panel { background:#114d82; border:1px solid #c9e0ea; }
+.roof3d-shade-legend i.preview-panel { background:#315f73; border:1px solid #f0ad3d; }
 .roof3d-stage { position:relative; border:0; border-radius:0; background:#e8efed; }
 .roof3d-viewbar { display:flex; align-items:center; gap:4px; min-height:43px; padding:6px 10px; border-bottom:1px solid #dce3e1; background:rgba(255,255,255,.94); }
 .roof3d-viewbar button { padding:6px 10px; border:0; border-radius:6px; background:transparent; color:#68716f; font:700 10px Inter,sans-serif; cursor:pointer; }
@@ -1927,9 +1940,14 @@ body.ignix-body {
 .roof3d-ai-status { right:13px; top:15px; bottom:auto; max-width:44%; }
 .roof3d-satellite-badge { top:58px; right:13px; }
 .roof3d-shade-badge { top:88px; right:13px; }
+.roof3d-layout-mode-badge { position:absolute; z-index:4; top:118px; right:13px; padding:6px 9px; border-radius:7px; background:rgba(237,248,243,.94); color:#176846; font-size:9px; font-weight:800; box-shadow:0 2px 9px rgba(30,40,50,.07); pointer-events:none; }
+.roof3d-layout-mode-badge.is-preview { background:rgba(255,248,234,.96); color:#9a6416; }
 .roof3d-instruction { display:flex; justify-content:center; gap:18px; padding:9px 12px; }
 .roof3d-instruction span { margin:0; color:#6e7775; }
 .roof3d-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:12px; }
+.roof3d-classification-metrics { display:flex; flex-wrap:wrap; gap:7px 18px; margin-top:12px; padding:10px 13px; border:1px solid #e0e5e3; border-radius:9px; background:#f8faf9; color:#737c7a; font-size:10px; }
+.roof3d-classification-metrics strong { margin-left:4px; color:#3f4947; }
+.roof3d-shade-note { margin:7px 2px 0; color:#737c7a; font-size:10px; line-height:1.45; }
 .roof3d-metric:nth-child(4n) { border-right:0; }
 .roof3d-metric:nth-child(n+5) { border-top:1px solid #e5e7e9; }
 .roof3d-secondary-actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }

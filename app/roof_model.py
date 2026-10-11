@@ -377,19 +377,24 @@ def roof_model(location_id):
 
         provider_payload = None
         if not prototype_fixture or _key():
-            result = rooftop_ingestion_service.ingest(
-                location_id,
-                current_user.id,
-                providers=["google_solar"],
-                include_data_layers=high_fidelity,
-            )
-            design, design_data = rooftop_design_service.get_current_design(
-                location_id, current_user.id
-            )
+            refresh_provider = str(request.args.get("refresh_provider", "0")).lower() in {
+                "1", "true", "yes"
+            }
+            result = None
+            if refresh_provider:
+                result = rooftop_ingestion_service.ingest(
+                    location_id,
+                    current_user.id,
+                    providers=["google_solar"],
+                    include_data_layers=high_fidelity,
+                )
+                design, design_data = rooftop_design_service.get_current_design(
+                    location_id, current_user.id
+                )
             provider_payload = rooftop_ingestion_service.legacy_roof_model_payload(
                 design
             )
-            provider_payload["cached"] = result["used_cache"]
+            provider_payload["cached"] = True if result is None else result["used_cache"]
 
         payload = rooftop_reconstruction_service.build_reconstruction(
             location,

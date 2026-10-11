@@ -536,6 +536,15 @@ def legacy_roof_model_payload(design):
     layer_data = (layers.analysis_result or {}) if layers else {}
     dsm = layer_data.get("dsm_grid")
     flux = layer_data.get("annual_flux_grid")
+    if flux:
+        flux = dict(flux)
+        flux["provenance"] = {
+            "provider": PROVIDER_GOOGLE,
+            "retrieved_at": layers.retrieved_at.isoformat() if layers.retrieved_at else None,
+            "source_version": layers.source_version,
+            "quality": layers.quality,
+            "resolution_meters": layer_data.get("resolution_meters"),
+        }
     return {
         "available": True,
         "status": "available",

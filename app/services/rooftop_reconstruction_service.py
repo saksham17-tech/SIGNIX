@@ -455,6 +455,8 @@ def _apply_usable_areas(surfaces, boundary, structures, origin, setback=.32):
 
 def build_reconstruction(location, design_data=None, provider_payload=None,
                          prototype_fixture=True):
+    from app.services import rooftop_shade_service
+
     authoritative_geojson = ((design_data or {}).get("authoritative") or {}).get("roof_boundary") or location.polygon_geojson
     boundary = _open_ring(authoritative_geojson)
     if len(boundary) < 3:
@@ -493,9 +495,17 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
         }
     structures = _structures(design_data, boundary, origin)
     _apply_usable_areas(surfaces, boundary, structures, origin)
+    shade_analysis = rooftop_shade_service.build_shade_analysis(
+        authoritative_geojson,
+        origin,
+        structures=structures,
+        provider_flux=(provider_payload or {}).get("shade"),
+        edge_setback_meters=.32,
+        obstruction_setback_meters=.30,
+    )
     return {
         "available": True,
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "mode": mode,
         "roof_type": roof_type,
         "status_badge": status,
@@ -505,6 +515,7 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
         "structures": structures,
         "imagery": {"available": False, "source": None},
         "shade": (provider_payload or {}).get("shade"),
+        "shade_analysis": shade_analysis,
         "dsmGrid": (provider_payload or {}).get("dsmGrid"),
         "constraints": {
             "boundary_authoritative": True,

@@ -55,6 +55,11 @@ def test_polygon_only_fixture_is_deterministic_flat_and_truthfully_labelled():
     assert first["surfaces"][0]["pitch_degrees"] == 0
     assert first["surfaces"][0]["plane_normal_enu"] == [0.0, 0.0, 1.0]
     assert first["structures"] == []
+    assert first["shade_analysis"]["status"] == "insufficient_data"
+    assert first["shade_analysis"]["placement_policy"]["unknown_cells"] == "exclude"
+    assert first["shade_analysis"]["placement_policy"]["default_mode"] == "planning_preview"
+    assert first["shade_analysis"]["areas_sqm"]["usable"] == 0
+    assert first["shade_analysis"]["areas_sqm"]["unknown"] > 0
     assert all(surface["source"] == "prototype_fixture" for surface in first["surfaces"])
     assert all(surface["confidence"] == "simulated" for surface in first["surfaces"])
 
@@ -299,6 +304,39 @@ def test_roof_model_endpoint_uses_fixture_without_external_api(client, app, monk
     assert payload["imagery"]["available"] is False
 
 
+def test_roof_model_load_does_not_automatically_call_paid_provider(client, app, monkeypatch):
+    with app.app_context():
+        user = User.query.filter_by(email="test@example.com").first()
+        location = UserLocation(
+            user_id=user.id,
+            address="Delhi cached reconstruction",
+            latitude=28.61395,
+            longitude=77.20907,
+            polygon_geojson=DELHI_ROOF,
+        )
+        db.session.add(location)
+        db.session.commit()
+        location_id = location.id
+
+    app.config["ROOFTOP_PROTOTYPE_FIXTURE"] = False
+    app.config["GOOGLE_SOLAR_API_KEY"] = "configured-but-not-requested"
+    from app.services import rooftop_ingestion_service
+    monkeypatch.setattr(
+        rooftop_ingestion_service,
+        "ingest",
+        lambda *args, **kwargs: pytest.fail("ordinary model loads must use persisted provider data"),
+    )
+
+    response = client.get(f"/api/roof-model/{location_id}")
+    repeated = client.get(f"/api/roof-model/{location_id}")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert repeated.status_code == 200
+    assert payload["mode"] == "user_fallback"
+    assert payload["shade_analysis"]["status"] == "insufficient_data"
+
+
 def test_renderer_contract_keeps_geometry_and_generation_concerns_separate():
     root = Path(__file__).resolve().parents[1]
     source = (root / "app/static/js/roof3d.js").read_text(encoding="utf-8")
@@ -307,7 +345,8 @@ def test_renderer_contract_keeps_geometry_and_generation_concerns_separate():
     assert "new THREE.OrthographicCamera" in source
     assert "requestAnimationFrame(animate);renderer.render(scene,camera)" in source
     assert "cameraAzimuth+=" not in source
-    assert "polygonFits(corners,surface.polygon,obstructions)" in source
+    assert "polygonFits(corners,surface.polygon,obstructions,{edgeSetback:0,obstructionSetback:0,checkGrid:false})" in source
+    assert "polygonFits(corners,localRing,obstructions)" in source
     assert "surfaceHeight(panel.surface" in source
     assert "reconstructedSurfaces.filter(function(surface){return surface.valid!==false;}).forEach(makeSurfaceMesh)" in source
     assert "roofHeightFromSurfaces(point[0],point[1])" in source
@@ -317,7 +356,7 @@ def test_renderer_contract_keeps_geometry_and_generation_concerns_separate():
     assert "addSurfaceEdges()" in source
     assert "fitCamera(true)" in source
     assert "viewMode:viewMode" in source
-    assert "Layout DC capacity" in template
+    assert "Visible layout DC" in template
     assert "Selected estimate" in template
     assert "Max roof capacity" in template
     assert "northDegrees:0" in source
@@ -325,6 +364,15 @@ def test_renderer_contract_keeps_geometry_and_generation_concerns_separate():
     assert "data-roof3d-layer=\"panels\"" in template
     assert "data-roof3d-layer=\"structures\"" in template
     assert "data-roof3d-layer=\"boundary\"" in template
+    assert 'id="roof3d-layout-mode"' in template
+    assert "Planning preview — shade unverified" in template
+    assert "Preview panels" in template
+    assert "Confirmed panels" in template
+    assert "setPanelLayoutMode:setPanelLayoutMode" in source
+    mode_switch = source[source.index("function setPanelLayoutMode"):source.index("function bindPlannerControls")]
+    assert "savedAnnualGeneration=" not in mode_switch
+    assert "localRing=" not in mode_switch
+    assert "fetch(" not in mode_switch
     assert "Prototype geometry is explicitly identified above." in template
     assert "/orientation-preview" in source
     assert "/orientation'" in source

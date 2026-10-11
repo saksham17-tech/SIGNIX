@@ -141,11 +141,29 @@
           <button type="button" id="roof3d-orientation-undo" class="roof3d-inspector-action secondary">Reset orientation</button>
         </section>
         <section>
+          <span class="roof3d-inspector-label">PANEL LAYOUT POLICY</span>
+          <label class="roof3d-layout-mode-field" for="roof3d-layout-mode">
+            <span>Placement mode</span>
+            <select id="roof3d-layout-mode">
+              <option value="planning_preview">Planning preview</option>
+              <option value="conservative">Conservative layout</option>
+            </select>
+          </label>
+          <small class="roof3d-layout-help">This changes only the visual layout. It does not update the saved estimate or financial inputs.</small>
+        </section>
+        <section>
           <span class="roof3d-inspector-label">LAYERS</span>
           <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="roof-planes" checked> Roof planes</label>
+          <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="shade-overlay" checked> Roof classification</label>
           <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="panels" checked> Panels</label>
           <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="structures" checked> Structures</label>
           <label class="roof3d-layer"><input type="checkbox" data-roof3d-layer="boundary" checked> Boundary</label>
+          <div class="roof3d-shade-legend" aria-label="Roof classification legend">
+            <span><i class="usable"></i>Usable</span><span><i class="shaded"></i>Shaded</span>
+            <span><i class="setback"></i>Setback</span><span><i class="obstruction"></i>Obstruction</span>
+            <span><i class="unknown"></i>Unknown</span>
+            <span><i class="verified-panel"></i>Verified panel</span><span><i class="preview-panel"></i>Preview panel</span>
+          </div>
         </section>
       </aside>
 
@@ -172,17 +190,31 @@
           <div id="roof-ai-status" class="roof3d-ai-status">Loading rooftop reconstruction…</div>
           <div id="roof3d-satellite-badge" class="roof3d-satellite-badge">Satellite reference · checking</div>
           <div id="roof3d-shade-badge" class="roof3d-shade-badge" aria-live="polite">Shade analysis · waiting</div>
+          <div id="roof3d-layout-mode-badge" class="roof3d-layout-mode-badge is-preview" aria-live="polite">Planning preview — shade unverified</div>
           <div id="roof-3d-fallback" class="hidden roof3d-fallback">3D preview unavailable on this device. Your roof geometry and system metrics remain available.</div>
         </div>
         <div class="roof3d-instruction"><span>Drag to orbit</span><span>Shift + drag to pan</span><span>Scroll to zoom</span><span class="roof3d-azimuth-help">Drag compass to orient modules</span></div>
       </div>
     </div>
 
+    <div class="roof3d-classification-metrics" aria-label="Rooftop classification areas">
+      <span>Usable <strong id="roof3d-area-usable">—</strong></span>
+      <span>Shaded <strong id="roof3d-area-shaded">—</strong></span>
+      <span>Obstructions <strong id="roof3d-area-obstruction">—</strong></span>
+      <span>Setbacks <strong id="roof3d-area-setback">—</strong></span>
+      <span>Unknown <strong id="roof3d-area-unknown">—</strong></span>
+      <span>Preview panels <strong id="roof3d-preview-module-count">0</strong></span>
+      <span>Preview DC <strong id="roof3d-preview-capacity">0.00 kWp</strong></span>
+      <span>Confirmed panels <strong id="roof3d-confirmed-module-count">0</strong></span>
+      <span>Confirmed DC <strong id="roof3d-confirmed-capacity">0.00 kWp</strong></span>
+    </div>
+    <p id="roof3d-shade-note" class="roof3d-shade-note">Shade classification is loading.</p>
+
     <div class="roof3d-metrics">
       <div class="roof3d-metric"><span>Roof area</span><strong>{% if roof_area %}{{ '%.1f'|format(roof_area|float) }} <small>m²</small>{% else %}Unavailable{% endif %}</strong></div>
       <div class="roof3d-metric"><span>Usable area</span><strong>{% if usable_area %}{{ '%.1f'|format(usable_area|float) }} <small>m²</small>{% else %}Unavailable{% endif %}</strong></div>
-      <div class="roof3d-metric"><span>Physical layout</span><strong id="roof3d-module-count">{{ pc if pc is not none else 'Unavailable' }}{% if pc is not none %} <small>modules</small>{% endif %}</strong></div>
-      <div class="roof3d-metric"><span>Layout DC capacity</span><strong id="roof3d-layout-capacity">{% if pc is not none and module_wattage %}{{ '%.2f'|format((pc|float * module_wattage|float) / 1000) }} <small>kWp</small>{% else %}Unavailable{% endif %}</strong></div>
+      <div class="roof3d-metric"><span>Visible layout</span><strong id="roof3d-module-count">{{ pc if pc is not none else 'Unavailable' }}{% if pc is not none %} <small>modules</small>{% endif %}</strong></div>
+      <div class="roof3d-metric"><span>Visible layout DC</span><strong id="roof3d-layout-capacity">{% if pc is not none and module_wattage %}{{ '%.2f'|format((pc|float * module_wattage|float) / 1000) }} <small>kWp</small>{% else %}Unavailable{% endif %}</strong></div>
       <div class="roof3d-metric"><span>Selected estimate</span><strong>{% if loc.system_size %}{{ loc.system_size }} <small>kW</small>{% else %}Unavailable{% endif %}</strong></div>
       <div class="roof3d-metric"><span>Max roof capacity</span><strong>{% if loc.roof_capacity_kw %}{{ loc.roof_capacity_kw }} <small>kW</small>{% else %}Unavailable{% endif %}</strong></div>
       <div class="roof3d-metric"><span>Annual generation</span><strong>{% if loc.annual_generation %}<span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation) }}</span> <small>kWh/yr</small>{% else %}Unavailable{% endif %}</strong></div>
@@ -193,7 +225,7 @@
       Your drawn rooftop boundary remains authoritative. Reconstructed and AI-derived geometry is advisory and never silently changes saved financial inputs.
       <span id="roof-ai-details">Prototype geometry is explicitly identified above.</span>
     </p>
-    <div class="roof3d-secondary-actions"><button type="button" class="btn btn-secondary roof3d-ai-button" id="roof-ai-btn">AI analyze structures</button><button type="button" class="btn btn-secondary roof3d-apply-button" id="roof-ai-apply-btn" disabled>Apply detected structures</button><button type="button" class="btn btn-secondary roof3d-site-button" id="roof-site-btn">Reload rooftop model</button><button type="button" class="btn btn-secondary roof3d-undo-button" id="roof-undo-btn">Reset exploration</button></div>
+    <div class="roof3d-secondary-actions"><button type="button" class="btn btn-secondary roof3d-ai-button" id="roof-ai-btn">AI analyze structures</button><button type="button" class="btn btn-secondary roof3d-apply-button" id="roof-ai-apply-btn" disabled>Apply detected structures</button><button type="button" class="btn btn-secondary roof3d-site-button" id="roof-site-btn">Recompute roof classification</button><button type="button" class="btn btn-secondary roof3d-undo-button" id="roof-undo-btn">Reset exploration</button></div>
   </div>
 
   <!-- Dial-style customization controls (PRD §3.2) -->

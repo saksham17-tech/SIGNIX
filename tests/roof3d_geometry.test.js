@@ -35,9 +35,62 @@ assert.equal(geometry.polygonFits(validPanel, surface, []), true);
 assert.equal(geometry.polygonFits(validPanel, roof, []), true);
 assert.equal(geometry.polygonFits(outsideSurface, surface, []), false);
 assert.equal(geometry.polygonFits(validPanel, surface, [obstruction]), false);
+const centerInsideEdgeOutside = [[8,1],[11,1],[11,3],[8,3]];
+assert.equal(geometry.pointInRing(9.5,2,roof), true);
+assert.equal(geometry.polygonFits(centerInsideEdgeOutside, roof, [], { grid: null, edgeSetback: 0, layoutMode: 'planning_preview' }), false);
+const concaveRoof = [[0,0],[6,0],[6,6],[4,6],[4,2],[2,2],[2,6],[0,6]];
+const crossesNotch = [[1.5,1],[4.5,1],[4.5,2.5],[1.5,2.5]];
+assert.equal(geometry.pointInRing(3,1.75,concaveRoof), true);
+assert.equal(geometry.polygonFits(crossesNotch, concaveRoof, [], { grid: null, edgeSetback: 0, layoutMode: 'planning_preview' }), false);
 assert.equal(geometry.sumSurfacePanelCounts({ east: 7, west: 8 }), 15);
 assert.equal(geometry.layoutCapacityKw(15, 545), 8.175);
 assert.equal(geometry.layoutDiffersFromEstimate(8.175, 8.0), true);
 assert.equal(geometry.layoutDiffersFromEstimate(8.1, 8.0), false);
+
+const classificationGrid = {
+  rows: 2, cols: 2, origin_x: 0, origin_z: 0, resolution_meters: 2,
+  classifications: ['usable', 'shaded', 'obstruction', 'unknown'],
+  placement_policy: { unknown_cells: 'exclude' }
+};
+assert.equal(geometry.panelTouchesExcludedGrid([[.2,.2],[1.6,.2],[1.6,1.6],[.2,1.6]], classificationGrid, 'planning_preview'), false);
+assert.equal(geometry.panelTouchesExcludedGrid([[2.1,.2],[3.7,.2],[3.7,1.6],[2.1,1.6]], classificationGrid, 'planning_preview'), true);
+assert.equal(geometry.panelTouchesExcludedGrid([[2.1,2.1],[3.7,2.1],[3.7,3.7],[2.1,3.7]], classificationGrid, 'planning_preview'), false);
+assert.equal(geometry.panelTouchesExcludedGrid([[2.1,2.1],[3.7,2.1],[3.7,3.7],[2.1,3.7]], classificationGrid, 'conservative'), true);
+assert.equal(geometry.panelTouchesExcludedGrid([[.2,.2],[1.6,.2],[1.6,1.6],[.2,1.6]], { ...classificationGrid, classifications: ['outside_roof', 'usable', 'usable', 'usable'] }, 'planning_preview'), true);
+assert.equal(geometry.panelTouchesExcludedGrid([[.2,.2],[1.6,.2],[1.6,1.6],[.2,1.6]], { ...classificationGrid, classifications: ['setback', 'usable', 'usable', 'usable'] }, 'planning_preview'), true);
+assert.equal(geometry.polygonFits([[2.1,2.1],[3.7,2.1],[3.7,3.7],[2.1,3.7]], [[0,0],[4,0],[4,4],[0,4]], [], { grid: classificationGrid, edgeSetback: 0, layoutMode: 'conservative' }), false);
+assert.equal(geometry.polygonFits([[2.1,2.1],[3.7,2.1],[3.7,3.7],[2.1,3.7]], [[0,0],[4,0],[4,4],[0,4]], [], { grid: classificationGrid, edgeSetback: 0, layoutMode: 'planning_preview' }), true);
+assert.equal(geometry.panelShadeVerified([[.2,.2],[1.6,.2],[1.6,1.6],[.2,1.6]], classificationGrid), true);
+assert.equal(geometry.panelShadeVerified([[2.1,2.1],[3.7,2.1],[3.7,3.7],[2.1,3.7]], classificationGrid), false);
+assert.equal(geometry.polygonFits([[.2,.2],[1.6,.2],[1.6,1.6],[.2,1.6]], [[0,0],[4,0],[4,4],[0,4]], [], { grid: classificationGrid, edgeSetback: 0 }), true);
+assert.equal(geometry.polygonFits([[-.1,.5],[1,.5],[1,1.5],[-.1,1.5]], [[0,0],[4,0],[4,4],[0,4]], [], { grid: classificationGrid, edgeSetback: 0 }), false);
+const nearRoofEdge = [[.1,.5],[1.2,.5],[1.2,1.5],[.1,1.5]];
+assert.equal(geometry.polygonFits(nearRoofEdge, [[0,0],[4,0],[4,4],[0,4]], [], { grid: null, layoutMode: 'planning_preview' }), false);
+assert.equal(geometry.polygonFits(nearRoofEdge, [[0,0],[4,0],[4,4],[0,4]], [], { grid: null, layoutMode: 'conservative' }), false);
+const nearbyObstruction = [[1.8,.5],[2.4,.5],[2.4,1.5],[1.8,1.5]];
+assert.equal(geometry.polygonFits([[.4,.5],[1.55,.5],[1.55,1.5],[.4,1.5]], [[0,0],[4,0],[4,4],[0,4]], [nearbyObstruction], { grid: null, edgeSetback: 0 }), false);
+assert.equal(geometry.polygonsOverlap(validPanel, obstruction), true);
+assert.equal(geometry.polygonsOverlap(validPanel, [[7,6],[8,6],[8,7],[7,7]]), false);
+
+const packed = geometry.selectNonOverlappingPanels([
+  { corners: [[0,0],[1,0],[1,1],[0,1]] },
+  { corners: [[.5,.5],[1.5,.5],[1.5,1.5],[.5,1.5]] },
+  { corners: [[2,0],[3,0],[3,1],[2,1]] }
+], 10);
+assert.equal(packed.length, 2);
+assert.ok(packed.length <= 3, 'preview cannot exceed physical candidate capacity');
+
+const malformedGrid = { rows: 2, cols: 2, classifications: ['usable'] };
+assert.equal(geometry.classificationGridValid(malformedGrid), false);
+assert.equal(geometry.panelTouchesExcludedGrid(validPanel, malformedGrid, 'conservative'), true);
+assert.equal(geometry.panelTouchesExcludedGrid(validPanel, malformedGrid, 'planning_preview'), false);
+assert.equal(geometry.panelShadeVerified(validPanel, malformedGrid), false);
+
+const savedFinancial = Object.freeze({ systemSize: 8, annualGeneration: 12000 });
+const previewMetrics = geometry.panelLayoutMetrics([{ shadeVerified: false }, { shadeVerified: false }], 545);
+const conservativeMetrics = geometry.panelLayoutMetrics([], 545);
+assert.deepEqual(JSON.parse(JSON.stringify(previewMetrics)), { total: 2, preview: 2, confirmed: 0, totalKw: 1.09, previewKw: 1.09, confirmedKw: 0 });
+assert.deepEqual(JSON.parse(JSON.stringify(conservativeMetrics)), { total: 0, preview: 0, confirmed: 0, totalKw: 0, previewKw: 0, confirmedKw: 0 });
+assert.deepEqual(savedFinancial, { systemSize: 8, annualGeneration: 12000 });
 
 console.log('roof3d geometry tests passed');
