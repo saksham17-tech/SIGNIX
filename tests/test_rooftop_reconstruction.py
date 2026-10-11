@@ -179,6 +179,30 @@ def test_invalid_provider_plane_falls_back_instead_of_receiving_panels():
     assert model["mode"] == "user_fallback"
     assert model["surfaces"][0]["source"] == "user_boundary"
     assert model["diagnostics"]["invalid_provider_surfaces"] > 0
+    assert model["status_badge"]["label"] == "Invalid provider rooftop data"
+
+
+@pytest.mark.parametrize("missing_field", ["pitchDegrees", "azimuthDegrees", "segmentIndex"])
+def test_incomplete_provider_plane_is_invalid_not_invented_flat_geometry(missing_field):
+    segment = {
+        "segmentIndex": 12,
+        "pitchDegrees": 16,
+        "azimuthDegrees": 184,
+        "footprint": DELHI_ROOF["coordinates"][0][:-1],
+    }
+    segment.pop(missing_field)
+    provider = {
+        "available": True,
+        "status": "available",
+        "roof": {"segments": [segment]},
+    }
+
+    model = reconstruction.build_reconstruction(_location(), provider_payload=provider)
+
+    assert model["mode"] == "user_fallback"
+    assert model["surfaces"][0]["source"] == "user_boundary"
+    assert model["status_badge"]["label"] == "Invalid provider rooftop data"
+    assert model["diagnostics"]["invalid_provider_surfaces"] == 1
 
 
 def test_irregular_polygon_is_preserved_as_one_flat_fixture_without_facets():
@@ -235,6 +259,8 @@ def test_provider_surfaces_and_manual_structures_are_clipped_to_authoritative_bo
     for item in model["surfaces"]:
         assert item["pitch_degrees"] == 19
         assert item["azimuth_degrees"] == 172
+        assert item["parent_surface_id"] == "provider-surface-4"
+        assert item["reference_height_meters"] == 7.8
         for point in item["polygon_geojson"]["coordinates"][0][:-1]:
             assert _inside_or_on(point, boundary)
     for item in model["structures"]:
@@ -255,6 +281,23 @@ def test_user_boundary_fallback_is_explicit_and_preserves_geojson():
     assert model["surfaces"][0]["source"] == "user_boundary"
     assert model["surfaces"][0]["pitch_degrees"] == 0
     assert model["diagnostics"]["provider_status"] == "not_found"
+
+
+def test_shade_grid_is_bound_to_the_reconstructed_authoritative_geometry():
+    first = reconstruction.build_reconstruction(_location())
+    shifted = {
+        "type": "Polygon",
+        "coordinates": [[
+            [77.20910, 28.61390], [77.20922, 28.61390],
+            [77.20922, 28.61402], [77.20910, 28.61402],
+            [77.20910, 28.61390],
+        ]],
+    }
+    second = reconstruction.build_reconstruction(_location(shifted))
+
+    assert first["geometry_key"] == first["shade_analysis"]["geometry_key"]
+    assert second["geometry_key"] == second["shade_analysis"]["geometry_key"]
+    assert first["geometry_key"] != second["geometry_key"]
 
 
 def test_failed_real_provider_does_not_masquerade_as_prototype_data():

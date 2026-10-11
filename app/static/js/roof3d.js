@@ -73,7 +73,7 @@
   function polygonEdgesIntersect(a,b){for(var i=0;i<a.length;i++)for(var j=0;j<b.length;j++)if(segmentsIntersect(a[i],a[(i+1)%a.length],b[j],b[(j+1)%b.length]))return true;return false;}
   function rect(cx,cz,w,d,a){var hw=w/2,hd=d/2,c=Math.cos(a),s=Math.sin(a);return[[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(function(p){return[cx+p[0]*c-p[1]*s,cz+p[0]*s+p[1]*c];});}
   function polygonsOverlap(a,b){return polygonEdgesIntersect(a,b)||pointInRing(a[0][0],a[0][1],b)||pointInRing(b[0][0],b[0][1],a);}
-  function classificationGridValid(grid){return!!(grid&&Array.isArray(grid.classifications)&&Number(grid.rows)>0&&Number(grid.cols)>0&&grid.classifications.length>=Number(grid.rows)*Number(grid.cols)&&Number.isFinite(Number(grid.resolution_meters))&&Number(grid.resolution_meters)>0&&Number.isFinite(Number(grid.origin_x))&&Number.isFinite(Number(grid.origin_z)));}
+  function classificationGridValid(grid){return!!(grid&&grid.geometry_compatible!==false&&Array.isArray(grid.classifications)&&Number(grid.rows)>0&&Number(grid.cols)>0&&grid.classifications.length>=Number(grid.rows)*Number(grid.cols)&&Number.isFinite(Number(grid.resolution_meters))&&Number(grid.resolution_meters)>0&&Number.isFinite(Number(grid.origin_x))&&Number.isFinite(Number(grid.origin_z)));}
   function panelIntersectsClassification(poly,grid,kinds){
     var g=grid===undefined?shadeGrid:grid;if(!classificationGridValid(g))return false;
     var wanted=Array.isArray(kinds)?kinds:[kinds],step=Number(g.resolution_meters),ox=Number(g.origin_x),oz=Number(g.origin_z);
@@ -503,9 +503,9 @@
     area('roof3d-area-usable','usable');area('roof3d-area-shaded','shaded');area('roof3d-area-obstruction','obstruction');area('roof3d-area-setback','setback');area('roof3d-area-unknown','unknown');
     if(modeBadge){modeBadge.textContent=panelLayoutMode==='planning_preview'?'Planning preview — shade unverified':'Conservative layout — confirmed usable cells only';modeBadge.classList.toggle('is-preview',panelLayoutMode==='planning_preview');}
     if(!badge)return;
-    if(!shadeGrid||shadeGrid.status==='insufficient_data'){
-      badge.textContent='Shade unverified · obstruction and setback rules active';badge.classList.add('is-error');badge.classList.remove('is-ready');
-      if(note)note.textContent=panelLayoutMode==='planning_preview'?'Planning-preview panels may occupy unknown cells. They are not shade-verified, and saved generation estimates do not include validated shading losses.':'Unknown regions have not been shade-verified. Conservative mode excludes them from panel placement.';
+    if(!shadeGrid||shadeGrid.status==='insufficient_data'||!classificationGridValid(shadeGrid)){
+      var incompatible=shadeGrid&&shadeGrid.geometry_compatible===false;badge.textContent=incompatible?'Shade classification · incompatible with current roof':'Shade unverified · obstruction and setback rules active';badge.classList.add('is-error');badge.classList.remove('is-ready');
+      if(note)note.textContent=incompatible?(panelLayoutMode==='planning_preview'?'The incompatible shade grid is ignored. Preview panels are not shade-verified.':'The incompatible shade grid is ignored. Conservative mode fails closed and places no panels.'):(panelLayoutMode==='planning_preview'?'Planning-preview panels may occupy unknown cells. They are not shade-verified, and saved generation estimates do not include validated shading losses.':'Unknown regions have not been shade-verified. Conservative mode excludes them from panel placement.');
     }else{
       var source=String(shadeGrid.source&&shadeGrid.source.type||'available').replaceAll('_',' ');badge.textContent='Shade classification · '+source;badge.classList.add('is-ready');badge.classList.remove('is-error');
       if(note)note.textContent='Panel placement excludes classified shade, obstruction footprints, safety setbacks, and any unknown cells required by policy.';
@@ -712,6 +712,7 @@
       var data=await res.json(); if(!res.ok||!data.available)throw new Error(data.error||'Location-specific roof data unavailable');
       siteRoofModel=data; siteModelLoading=false;
       shadeGrid=data.shade_analysis||null; shadeSide=null;
+      if(shadeGrid)shadeGrid.geometry_compatible=Boolean(data.geometry_key&&shadeGrid.geometry_key===data.geometry_key);
       panelLayoutMode=shadeGrid&&shadeGrid.placement_policy&&shadeGrid.placement_policy.default_mode==='conservative'?'conservative':'planning_preview';
       var layoutControl=document.getElementById('roof3d-layout-mode');if(layoutControl)layoutControl.value=panelLayoutMode;
       var segs=data.surfaces||[];

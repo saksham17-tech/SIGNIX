@@ -85,6 +85,11 @@ assert.equal(geometry.classificationGridValid(malformedGrid), false);
 assert.equal(geometry.panelTouchesExcludedGrid(validPanel, malformedGrid, 'conservative'), true);
 assert.equal(geometry.panelTouchesExcludedGrid(validPanel, malformedGrid, 'planning_preview'), false);
 assert.equal(geometry.panelShadeVerified(validPanel, malformedGrid), false);
+const incompatibleGrid = {...classificationGrid, geometry_compatible: false};
+assert.equal(geometry.classificationGridValid(incompatibleGrid), false);
+assert.equal(geometry.panelTouchesExcludedGrid(validPanel, incompatibleGrid, 'conservative'), true);
+assert.equal(geometry.panelTouchesExcludedGrid(validPanel, incompatibleGrid, 'planning_preview'), false);
+assert.equal(geometry.panelShadeVerified(validPanel, incompatibleGrid), false);
 
 const savedFinancial = Object.freeze({ systemSize: 8, annualGeneration: 12000 });
 const previewMetrics = geometry.panelLayoutMetrics([{ shadeVerified: false }, { shadeVerified: false }], 545);

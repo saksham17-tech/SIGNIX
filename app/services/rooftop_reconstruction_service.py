@@ -2,11 +2,13 @@
 
 The user polygon is always authoritative. Provider polygons are clipped to it.
 When prototype fixture mode is enabled, deterministic simulated roof planes are
-derived from that polygon and are labelled as simulated provider data.
+derived from that polygon and are labelled as simulated prototype data.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from copy import deepcopy
 
@@ -351,31 +353,87 @@ def _fixture_surfaces(boundary, metadata, origin):
     )], "flat"
 
 
+def _finite_number(value):
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
 def _provider_surfaces(provider_payload, boundary, origin):
     surfaces = []
+    invalid_segments = 0
     triangles = _triangulate(boundary)
-    for segment_index, segment in enumerate(((provider_payload or {}).get("roof") or {}).get("segments") or []):
-        footprint = segment.get("footprint") or []
-        if len(footprint) < 3:
+    segments = ((provider_payload or {}).get("roof") or {}).get("segments")
+    if not isinstance(segments, list) or not segments:
+        return surfaces, 1
+    for segment in segments:
+        if not isinstance(segment, dict):
+            invalid_segments += 1
             continue
+        footprint = segment.get("footprint") or []
+        pitch = _finite_number(segment.get("pitchDegrees"))
+        azimuth = _finite_number(segment.get("azimuthDegrees"))
+        segment_identity = segment.get("segmentIndex")
+        height = segment.get("planeHeightAtCenterMeters")
+        if height is not None:
+            height = _finite_number(height)
+        try:
+            footprint = [
+                [float(point[0]), float(point[1])]
+                for point in footprint
+                if isinstance(point, (list, tuple)) and len(point) >= 2
+            ]
+        except (TypeError, ValueError):
+            footprint = []
+        valid_identity = (
+            isinstance(segment_identity, (int, str))
+            and not isinstance(segment_identity, bool)
+            and str(segment_identity).strip() != ""
+        )
+        if (
+            len(footprint) < 3
+            or not all(math.isfinite(value) for point in footprint for value in point)
+            or not valid_identity
+            or pitch is None
+            or not 0 <= pitch < 89
+            or azimuth is None
+            or (segment.get("planeHeightAtCenterMeters") is not None and height is None)
+        ):
+            invalid_segments += 1
+            continue
+        segment_fragments = 0
         for fragment_index, triangle in enumerate(triangles):
             clipped = _clip_to_convex(footprint, triangle)
             if len(clipped) < 3 or _metric_area(clipped, origin) < .02:
                 continue
-            segment_id = f"provider-surface-{segment.get('segmentIndex', segment_index + 1)}"
+            segment_id = f"provider-surface-{segment_identity}"
             center = segment.get("center") or {}
+            if not isinstance(center, dict):
+                center = {}
             reference_point = None
-            if center.get("longitude") is not None and center.get("latitude") is not None:
-                reference_point = [float(center["longitude"]), float(center["latitude"])]
+            center_lng = _finite_number(center.get("longitude"))
+            center_lat = _finite_number(center.get("latitude"))
+            if center_lng is not None and center_lat is not None:
+                reference_point = [center_lng, center_lat]
             surfaces.append(_surface(
                 f"{segment_id}-fragment-{fragment_index + 1}", clipped, origin,
-                segment.get("pitchDegrees"), segment.get("azimuthDegrees"),
+                pitch, azimuth,
                 provider_payload.get("source") or "provider", "provider",
                 parent_id=segment_id,
-                reference_height=segment.get("planeHeightAtCenterMeters"),
+                reference_height=height,
                 reference_point=reference_point,
             ))
-    return surfaces
+            segment_fragments += 1
+        if not segment_fragments:
+            invalid_segments += 1
+    return surfaces, invalid_segments
+
+
+def _geometry_key(boundary):
+    canonical = json.dumps(_closed(boundary), separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
 
 
 def _structures(design_data, boundary, origin):
@@ -463,8 +521,10 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
         return {"available": False, "mode": "invalid", "error": "A valid authoritative rooftop boundary is required"}
     origin = _centroid(boundary)
     metadata = ((design_data or {}).get("authoritative") or {}).get("roof_metadata") or {}
-    provider_surfaces = _provider_surfaces(provider_payload, boundary, origin) if (provider_payload or {}).get("available") else []
-    invalid_provider_surfaces = sum(not surface.get("is_valid", False) for surface in provider_surfaces)
+    provider_surfaces, invalid_provider_surfaces = (
+        _provider_surfaces(provider_payload, boundary, origin)
+        if (provider_payload or {}).get("available") else ([], 0)
+    )
     surfaces = provider_surfaces
     if surfaces and any(surface.get("is_valid") for surface in surfaces):
         mode, status, roof_type = "provider", {
@@ -474,9 +534,22 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
         }, metadata.get("roof_type") or "mixed"
     elif provider_payload is not None:
         surfaces = [_surface("user-footprint", boundary, origin, 0, metadata.get("azimuth_degrees") or 0, "user_boundary", "authoritative")]
-        mode, roof_type, status = "user_fallback", "flat", {
-            "label": "Using the user-drawn roof fallback",
-            "detail": "Location-specific data unavailable",
+        provider_status = (provider_payload or {}).get("status", "unavailable")
+        invalid_provider = bool((provider_payload or {}).get("available")) or provider_status in {
+            "malformed_response", "incompatible_geometry"
+        }
+        mode, roof_type = "user_fallback", "flat"
+        unavailable_detail = (
+            "Cached provider rooftop data is stale; using the authoritative user-drawn boundary"
+            if provider_status == "stale" else
+            "Location-specific data is unavailable; using the authoritative user-drawn boundary"
+        )
+        status = {
+            "label": "Invalid provider rooftop data" if invalid_provider else "Provider rooftop data unavailable",
+            "detail": (
+                "Provider roof geometry is invalid; using the authoritative user-drawn boundary"
+                if invalid_provider else unavailable_detail
+            ),
             "tone": "fallback",
         }
     elif prototype_fixture:
@@ -503,12 +576,15 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
         edge_setback_meters=.32,
         obstruction_setback_meters=.30,
     )
+    geometry_key = _geometry_key(boundary)
+    shade_analysis["geometry_key"] = geometry_key
     return {
         "available": True,
         "schema_version": "1.1",
         "mode": mode,
         "roof_type": roof_type,
         "status_badge": status,
+        "geometry_key": geometry_key,
         "projection_origin": {"longitude": origin[0], "latitude": origin[1]},
         "authoritative_boundary_geojson": deepcopy(authoritative_geojson),
         "surfaces": surfaces,
@@ -530,6 +606,7 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
             "provider_error": (provider_payload or {}).get("error"),
             "surface_fragments": len(surfaces),
             "invalid_provider_surfaces": invalid_provider_surfaces,
+            "invalid_provider_segments": invalid_provider_surfaces,
             "projected_boundary_area_sqm": round(_metric_area(boundary, origin), 2),
             "projected_surface_area_sqm": round(
                 sum(float(surface.get("projected_area_sqm") or 0) for surface in surfaces), 2

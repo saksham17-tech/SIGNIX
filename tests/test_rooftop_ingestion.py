@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta
 
 import pytest
 import requests
@@ -286,10 +287,125 @@ def test_failed_refresh_preserves_previous_usable_source(client, app, monkeypatc
         design = RooftopDesign.query.filter_by(
             user_location_id=location_id, is_current=True
         ).first()
-        assert ingestion.legacy_roof_model_payload(design)["available"] is True
+        location = db.session.get(UserLocation, location_id)
+        assert ingestion.legacy_roof_model_payload(
+            design, location=location
+        )["available"] is True
     reused = _post(client, location_id).get_json()
     assert reused["sources"][0]["cached"] is True
     assert reused["sources"][0]["status"] == "available"
+
+
+def test_authoritative_design_edit_invalidates_provider_cache(client, app, monkeypatch):
+    location_id = _location(app)
+    app.config["GOOGLE_SOLAR_API_KEY"] = "test-key"
+    from app import roof_model
+    monkeypatch.setattr(roof_model, "_building_payload", lambda lat, lng: _building_payload())
+    assert _post(client, location_id).status_code == 200
+
+    edited_roof = {
+        "type": "Polygon",
+        "coordinates": [[
+            [77.2090, 28.6139], [77.2093, 28.6139],
+            [77.2093, 28.6141], [77.2090, 28.6141],
+            [77.2090, 28.6139],
+        ]],
+    }
+    revised = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={"authoritative_roof_geojson": edited_roof},
+    )
+    assert revised.status_code == 201
+
+    with app.app_context():
+        location = db.session.get(UserLocation, location_id)
+        design = RooftopDesign.query.filter_by(
+            user_location_id=location_id, is_current=True
+        ).first()
+
+        payload = ingestion.legacy_roof_model_payload(design, location=location)
+
+        assert payload["available"] is False
+        assert payload["status"] == "incompatible_geometry"
+
+
+def test_ingestion_uses_current_authoritative_design_boundary(client, app, monkeypatch):
+    location_id = _location(app)
+    app.config["GOOGLE_SOLAR_API_KEY"] = "test-key"
+    from app import roof_model
+    calls = []
+
+    def building(lat, lng):
+        calls.append((lat, lng))
+        payload = _building_payload()
+        payload["center"] = {"latitude": lat, "longitude": lng}
+        return payload
+
+    monkeypatch.setattr(roof_model, "_building_payload", building)
+    assert _post(client, location_id).status_code == 200
+    edited_roof = {
+        "type": "Polygon",
+        "coordinates": [[
+            [77.2092, 28.6139], [77.2094, 28.6139],
+            [77.2094, 28.6141], [77.2092, 28.6141],
+            [77.2092, 28.6139],
+        ]],
+    }
+    revised = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={"authoritative_roof_geojson": edited_roof},
+    )
+    assert revised.status_code == 201
+
+    result = _post(client, location_id).get_json()
+
+    assert len(calls) == 2
+    assert result["used_cache"] is False
+    assert result["sources"][0]["analysis"]["authoritative_footprint_geojson"] == edited_roof
+
+
+def test_legacy_payload_rejects_expired_provider_data(client, app, monkeypatch):
+    location_id = _location(app)
+    app.config["GOOGLE_SOLAR_API_KEY"] = "test-key"
+    from app import roof_model
+    monkeypatch.setattr(roof_model, "_building_payload", lambda lat, lng: _building_payload())
+    assert _post(client, location_id).status_code == 200
+
+    with app.app_context():
+        location = db.session.get(UserLocation, location_id)
+        design = RooftopDesign.query.filter_by(
+            user_location_id=location_id, is_current=True
+        ).first()
+        source = next(item for item in design.sources if item.data_type == "building_insights")
+        source.reusable_until = datetime.utcnow() - timedelta(seconds=1)
+        db.session.commit()
+
+        payload = ingestion.legacy_roof_model_payload(design, location=location)
+
+        assert payload["available"] is False
+        assert payload["status"] == "stale"
+
+
+def test_roof_model_explicit_refresh_bypasses_cache(client, app, monkeypatch):
+    location_id = _location(app)
+    app.config["GOOGLE_SOLAR_API_KEY"] = "test-key"
+    from app import roof_model
+    calls = []
+
+    def building(lat, lng):
+        calls.append((lat, lng))
+        return _building_payload()
+
+    monkeypatch.setattr(roof_model, "_building_payload", building)
+    assert _post(client, location_id).status_code == 200
+
+    response = client.get(
+        f"/api/roof-model/{location_id}?high_fidelity=0&refresh_provider=1"
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["mode"] == "provider"
+    assert len(calls) == 2
 
 
 def test_ingestion_preserves_user_geometry_financials_and_coordinate_order(

@@ -387,12 +387,13 @@ def roof_model(location_id):
                     current_user.id,
                     providers=["google_solar"],
                     include_data_layers=high_fidelity,
+                    refresh=True,
                 )
                 design, design_data = rooftop_design_service.get_current_design(
                     location_id, current_user.id
                 )
             provider_payload = rooftop_ingestion_service.legacy_roof_model_payload(
-                design
+                design, location=location
             )
             provider_payload["cached"] = True if result is None else result["used_cache"]
 

@@ -45,9 +45,9 @@ def _safe_url(value):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
 
 
-def _cache_key(location, data_type):
+def _cache_key(location, data_type, roof_geojson=None):
     # Rounded location plus polygon identity prevents reuse after a roof edit.
-    polygon = (location.polygon_geojson or {}).get("coordinates") or []
+    polygon = (roof_geojson or location.polygon_geojson or {}).get("coordinates") or []
     identity = json.dumps(polygon, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
     return (
@@ -276,7 +276,9 @@ def _fetch_building(location, ring):
     from app import roof_model
 
     key = roof_model._key()
-    cache_key = _cache_key(location, BUILDING_INSIGHTS)
+    cache_key = _cache_key(
+        location, BUILDING_INSIGHTS, {"type": "Polygon", "coordinates": [ring]}
+    )
     if not key:
         return _source_record(
             provider=PROVIDER_GOOGLE,
@@ -323,7 +325,9 @@ def _fetch_building(location, ring):
 def _fetch_data_layers(location, ring):
     from app import roof_model
 
-    cache_key = _cache_key(location, DATA_LAYERS)
+    cache_key = _cache_key(
+        location, DATA_LAYERS, {"type": "Polygon", "coordinates": [ring]}
+    )
     lat, lng = roof_model._selection_point(ring)
     diagnostics = {}
     try:
@@ -369,7 +373,9 @@ def _fetch_data_layers(location, ring):
 def _fetch_gemini(location, ring):
     from app import roof_ai
 
-    cache_key = _cache_key(location, GEMINI_ANALYSIS)
+    cache_key = _cache_key(
+        location, GEMINI_ANALYSIS, {"type": "Polygon", "coordinates": [ring]}
+    )
     model = current_app.config.get("GEMINI_ROOF_MODEL") or current_app.config.get(
         "GEMINI_MODEL", "gemini-3.6-flash"
     )
@@ -430,15 +436,20 @@ def ingest(location_id, user_id, providers=None, include_data_layers=False, refr
         return None
     providers = providers or [PROVIDER_GOOGLE]
     providers = list(dict.fromkeys(providers))
-    ring = rooftop_design_service._canonical_polygon(
-        location.polygon_geojson, "polygon_geojson", required=True
-    )["coordinates"][0]
     current, _ = rooftop_design_service.get_current_design(location_id, user_id)
+    authoritative = (
+        current.authoritative_roof_geojson if current is not None
+        else location.polygon_geojson
+    )
+    roof_geojson = rooftop_design_service._canonical_polygon(
+        authoritative, "authoritative_roof_geojson", required=True
+    )
+    ring = roof_geojson["coordinates"][0]
     new_sources = []
     summaries = []
 
     def obtain(provider, data_type, fetcher):
-        key = _cache_key(location, data_type)
+        key = _cache_key(location, data_type, roof_geojson)
         cached = None if refresh else _cached_source(current, provider, data_type, key)
         if cached is not None:
             summaries.append(_source_summary(cached, True))
@@ -482,31 +493,58 @@ def ingest(location_id, user_id, providers=None, include_data_layers=False, refr
     }
 
 
-def legacy_roof_model_payload(design):
+def _source_matches_location(source, location, data_type, roof_geojson=None):
+    """Return whether a persisted source is fresh and belongs to this roof."""
+    if location is None:
+        return True
+    reusable_until = _naive_utc(source.reusable_until)
+    return (
+        source.cache_key == _cache_key(location, data_type, roof_geojson)
+        and reusable_until is not None
+        and reusable_until > datetime.utcnow()
+    )
+
+
+def legacy_roof_model_payload(design, location=None):
     """Adapt persisted normalized sources to the existing roof3d.js contract."""
+    roof_geojson = design.authoritative_roof_geojson
+    building_sources = [
+        item for item in design.sources
+        if item.provider == PROVIDER_GOOGLE and item.data_type == BUILDING_INSIGHTS
+    ]
     building = next(
         (
-            item for item in reversed(design.sources)
-            if item.provider == PROVIDER_GOOGLE
-            and item.data_type == BUILDING_INSIGHTS
-            and item.is_usable
+            item for item in reversed(building_sources)
+            if item.is_usable
+            and _source_matches_location(
+                item, location, BUILDING_INSIGHTS, roof_geojson
+            )
         ),
         None,
     )
     if building is None:
-        latest = next(
-            (
-                item for item in reversed(design.sources)
-                if item.provider == PROVIDER_GOOGLE
-                and item.data_type == BUILDING_INSIGHTS
-            ),
-            None,
-        )
+        latest = building_sources[-1] if building_sources else None
+        usable = [item for item in building_sources if item.is_usable]
+        compatible = [
+            item for item in usable
+            if location is not None
+            and item.cache_key == _cache_key(
+                location, BUILDING_INSIGHTS, roof_geojson
+            )
+        ]
+        if location is not None and compatible:
+            status = "stale"
+            error = "Cached provider rooftop data has expired; refresh is required"
+        elif location is not None and usable:
+            status = "incompatible_geometry"
+            error = "Cached provider rooftop data belongs to a different roof geometry"
+        else:
+            status = latest.availability_status if latest else "unavailable"
+            error = ((latest.diagnostics or {}).get("message") if latest else None)
         return {
             "available": False,
-            "status": latest.availability_status if latest else "unavailable",
-            "error": ((latest.diagnostics or {}).get("message") if latest else None)
-            or "Location-specific rooftop data is unavailable",
+            "status": status,
+            "error": error or "Location-specific rooftop data is unavailable",
         }
     normalized = building.analysis_result or {}
     roof = normalized.get("roof") or {}
@@ -530,6 +568,7 @@ def legacy_roof_model_payload(design):
             if item.provider == PROVIDER_GOOGLE
             and item.data_type == DATA_LAYERS
             and item.is_usable
+            and _source_matches_location(item, location, DATA_LAYERS, roof_geojson)
         ),
         None,
     )
