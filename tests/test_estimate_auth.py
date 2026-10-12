@@ -112,6 +112,12 @@ def test_user_cannot_read_another_users_location(app):
     assert pdf.status_code == 404
 
 
+def test_missing_report_returns_404_for_authenticated_user(client):
+    response = client.get("/report/999999")
+
+    assert response.status_code == 404
+
+
 def test_user_cannot_list_another_users_locations(app):
     suffix = uuid.uuid4().hex[:8]
     email_a = f"list-a-{suffix}@example.com"

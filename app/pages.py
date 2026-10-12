@@ -30,8 +30,34 @@ def index():
 @pages_bp.route("/dashboard")
 @login_required
 def dashboard():
-    recent = location_service.list_recent_locations(current_user.id)
-    return render_template("dashboard.html", locations=recent)
+    locations = location_service.list_locations(current_user.id)
+    summary = {
+        "saved_locations": len(locations),
+        "total_capacity_kw": sum(location.system_size or 0 for location in locations),
+        "annual_generation_kwh": sum(
+            location.annual_generation or 0 for location in locations
+        ),
+        "monthly_savings": sum(location.monthly_savings or 0 for location in locations),
+    }
+    return render_template(
+        "dashboard.html", locations=locations[:6], summary=summary
+    )
+
+
+@pages_bp.route("/reports")
+@login_required
+def reports():
+    """List every saved estimate with a direct route to its full report."""
+    locations = location_service.list_locations(current_user.id)
+    return render_template("reports.html", locations=locations)
+
+
+@pages_bp.route("/saved-locations")
+@login_required
+def saved_locations():
+    """Show the signed-in user's saved rooftop locations."""
+    locations = location_service.list_locations(current_user.id)
+    return render_template("saved_locations.html", locations=locations)
 
 
 @pages_bp.route("/compare", methods=["GET", "POST"])
@@ -65,10 +91,14 @@ def compare():
                 )
             ]
 
+    # A repeated ID is still one scenario; preserve order while preventing a
+    # self-comparison from rendering duplicate columns.
+    selected_ids = list(dict.fromkeys(selected_ids))[:3]
+
     if selected_ids:
         selected_locations = location_service.list_locations_by_ids(
             current_user.id, selected_ids
-        )[:3]
+        )
 
     comparison = None
     if len(selected_locations) >= 2:

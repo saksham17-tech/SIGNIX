@@ -4,9 +4,10 @@
 
 {% block content %}
 <section class="report-header">
-  <div>
-    <h1>Detailed Report</h1>
-    <p class="address">{{ loc.address }}</p>
+  <div class="report-header-main">
+    <p class="report-kicker">{{ _('SAVED ESTIMATE') }} · #{{ loc.id }}</p>
+    <h1>{{ loc.address }}</h1>
+    <p class="address">{{ _('Detailed solar planning report') }}</p>
     {% set conf = loc.irradiance_confidence or (loc.suitability_rating.data_confidence.tier if loc.suitability_rating and loc.suitability_rating.data_confidence else none) %}
     {% set conf_class = 'data-conf-high' if conf == 'high' else 'data-conf-medium' if conf == 'medium' else 'data-conf-low' if conf == 'low' else 'data-conf-unknown' %}
     <div style="margin-top:10px;">
@@ -23,28 +24,31 @@
       </span>
       {% endif %}
       {% if loc.orientation_label %}
-      <span class="orientation-badge">🧭 {{ loc.orientation_label }}
+      <span class="orientation-badge">{{ _('Orientation') }} · {{ loc.orientation_label }}
         {% if loc.orientation_deg is not none %}({{ loc.orientation_deg }}°){% endif %}
       </span>
       {% endif %}
       {% if loc.battery_kwh and loc.battery_kwh > 0 %}
-      <span class="battery-badge">🔋 {{ loc.battery_kwh }} kWh battery</span>
+      <span class="battery-badge">{{ _('Battery') }} · {{ loc.battery_kwh }} kWh</span>
       {% endif %}
       {% if loc.inverter_type %}
-      <span class="orientation-badge">⚡ {{ loc.inverter_type }} inverter</span>
+      <span class="orientation-badge">{{ _('Inverter') }} · {{ loc.inverter_type }}</span>
       {% endif %}
     </div>
   </div>
-  <div class="pdf-download-group">
-    <a class="btn btn-secondary" href="{{ url_for('pages.download_pdf', location_id=loc.id, mode='summary') }}">{{ _('Download homeowner summary') }}</a>
-    <a class="btn btn-secondary" href="{{ url_for('pages.download_pdf', location_id=loc.id, mode='full') }}">{{ _('Download full technical PDF') }}</a>
-    <a class="btn btn-primary" href="{{ url_for('pages.download_installer_package', location_id=loc.id) }}">{{ _('Download installer-ready package') }}</a>
+  <div class="report-header-actions">
+    <a class="report-back-link" href="{{ url_for('pages.reports') }}">← {{ _('All saved reports') }}</a>
+    <div class="pdf-download-group" aria-label="{{ _('Report downloads') }}">
+      <a class="btn btn-secondary" href="{{ url_for('pages.download_pdf', location_id=loc.id, mode='summary') }}">{{ _('Homeowner summary') }}</a>
+      <a class="btn btn-secondary" href="{{ url_for('pages.download_pdf', location_id=loc.id, mode='full') }}">{{ _('Technical PDF') }}</a>
+      <a class="btn btn-primary" href="{{ url_for('pages.download_installer_package', location_id=loc.id) }}">{{ _('Installer package') }}</a>
+    </div>
   </div>
   <p class="installer-export-note">
     {{ _('Share this package with any installer of your choice — GeoJSON roof outline, key metrics, and PDF summary. SIGNIX stays vendor-neutral and does not send your details to partner installers.') }}
   </p>
 
-  <div class="clone-scenario-panel" id="clone-scenario-panel" data-location-id="{{ loc.id }}">
+  <div class="clone-scenario-panel" id="clone-scenario-panel" data-location-id="{{ loc.id }}" data-source-sizing-mode="{{ loc.sizing_mode or '' }}" data-source-backup="{{ 'true' if (loc.battery_kwh and loc.battery_kwh > 0) else 'false' }}">
     <h3>{{ _('Duplicate estimate → change one variable') }}</h3>
     <p class="clone-help">{{ _('Re-run this roof with a single change, then compare both scenarios side-by-side.') }}</p>
     <div class="clone-controls">
@@ -79,7 +83,7 @@
       </label>
       <button type="button" class="btn-primary-lg" id="clone-run-btn">{{ _('Clone & compare') }}</button>
     </div>
-    <p id="clone-status" class="clone-status hidden" role="status"></p>
+    <p id="clone-status" class="clone-status hidden" role="status" aria-live="polite" tabindex="-1"></p>
   </div>
 </section>
 
@@ -93,17 +97,17 @@
   <span class="monetary-disclaimer">{{ monetary_disclaimer }}</span>
 </section>
 
-<nav class="tabs">
-  <button class="tab-btn active" data-tab="overview">System Sizing</button>
-  <button class="tab-btn" data-tab="generation">Energy Forecasting</button>
-  <button class="tab-btn" data-tab="financial">Financing Options</button>
-  <button class="tab-btn" data-tab="capex-dpa">CAPEX vs DPA</button>
-  <button class="tab-btn" data-tab="environmental">Environmental</button>
-  <button class="tab-btn" data-tab="next-steps">{{ _('Next steps') }}</button>
+<nav class="tabs" role="tablist" aria-label="{{ _('Report sections') }}">
+  <button id="report-tab-overview" class="tab-btn active" data-tab="overview" type="button" role="tab" aria-selected="true" aria-controls="tab-overview" tabindex="0">System Sizing</button>
+  <button id="report-tab-generation" class="tab-btn" data-tab="generation" type="button" role="tab" aria-selected="false" aria-controls="tab-generation" tabindex="-1">Energy Forecasting</button>
+  <button id="report-tab-financial" class="tab-btn" data-tab="financial" type="button" role="tab" aria-selected="false" aria-controls="tab-financial" tabindex="-1">Financing Options</button>
+  <button id="report-tab-capex-dpa" class="tab-btn" data-tab="capex-dpa" type="button" role="tab" aria-selected="false" aria-controls="tab-capex-dpa" tabindex="-1">CAPEX vs DPA</button>
+  <button id="report-tab-environmental" class="tab-btn" data-tab="environmental" type="button" role="tab" aria-selected="false" aria-controls="tab-environmental" tabindex="-1">Environmental</button>
+  <button id="report-tab-next-steps" class="tab-btn" data-tab="next-steps" type="button" role="tab" aria-selected="false" aria-controls="tab-next-steps" tabindex="-1">{{ _('Next steps') }}</button>
 </nav>
 
 
-<section id="tab-overview" class="tab-panel active">
+<section id="tab-overview" class="tab-panel active" role="tabpanel" aria-labelledby="report-tab-overview" tabindex="0">
   {{ rating_display(loc.suitability_rating, 'report') }}
 
   <!-- 3D rooftop preview + customization -->
@@ -168,21 +172,21 @@
       </aside>
 
       <div class="roof3d-stage" id="roof3d-stage">
-        <div class="roof3d-viewbar" aria-label="Rooftop view mode">
-          <button type="button" class="active" data-roof3d-view="3d">3D Model</button>
-          <button type="button" data-roof3d-view="satellite" disabled>Satellite</button>
-          <button type="button" data-roof3d-view="top">Top View</button>
-          <button type="button" data-roof3d-view="wireframe">Wireframe</button>
+        <div class="roof3d-viewbar" role="group" aria-label="Rooftop view mode">
+          <button type="button" class="active" data-roof3d-view="3d" aria-pressed="true">3D Model</button>
+          <button type="button" data-roof3d-view="satellite" aria-pressed="false" disabled>Satellite</button>
+          <button type="button" data-roof3d-view="top" aria-pressed="false">Top View</button>
+          <button type="button" data-roof3d-view="wireframe" aria-pressed="false">Wireframe</button>
           <button type="button" id="roof3d-reset-view" class="roof3d-reset-view">Reset view</button>
         </div>
         <div id="roof-3d-container" class="roof3d-canvas-wrap">
           <div class="roof3d-compass" aria-label="True north and panel orientation">
             <span class="roof3d-true-north">TRUE NORTH</span>
-            <div class="roof3d-compass-ring">
+            <div class="roof3d-compass-ring" role="slider" tabindex="0" aria-label="Solar panel orientation" aria-valuemin="0" aria-valuemax="359" aria-valuenow="{{ loc.orientation_deg if loc.orientation_deg is not none else 180 }}">
               <span class="c-n">N</span><span class="c-ne">NE</span><span class="c-e">E</span>
               <span class="c-se">SE</span><span class="c-s">S</span><span class="c-sw">SW</span>
               <span class="c-w">W</span><span class="c-nw">NW</span>
-              <i class="roof3d-sun" role="button" aria-label="Panel orientation handle">●</i>
+              <i class="roof3d-sun" aria-hidden="true">●</i>
             </div>
           </div>
           <div class="roof3d-orientation-pill"><strong id="roof3d-orientation">Panel orientation</strong><span id="roof3d-orientation-detail">Panels follow each reconstructed roof plane</span><small id="roof3d-orientation-factor"></small><small id="roof3d-orientation-delta"></small></div>
@@ -436,7 +440,7 @@
   {% endif %}
 </section>
 
-<section id="tab-generation" class="tab-panel">
+<section id="tab-generation" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-generation" tabindex="0" hidden>
   <div class="report-section-heading"><span class="report-eyebrow">ENERGY FORECAST</span><h2>When the system produces energy</h2><p>Year-one monthly output and the persisted 25-year degradation forecast.</p></div>
   <p style="font-size:13px;color:var(--gray);margin-top:0;">
     Adjusted for roof orientation
@@ -488,7 +492,7 @@
 
 
 
-<section id="tab-financial" class="tab-panel">
+<section id="tab-financial" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-financial" tabindex="0" hidden>
   <div class="report-section-heading"><span class="report-eyebrow">PROJECT ECONOMICS</span><h2>Financial progression</h2><p>Cashflow and savings use the persisted SIGNIX financial model.</p></div>
   <div class="report-visual-grid">
     <article class="report-visual report-visual-wide">
@@ -646,7 +650,7 @@
   <p class="chart-note">Cashflow includes {{ loc.chart_data.energy.degradation_pct }}% annual module degradation and {{ (loc.extras or {}).get('tariff_escalation_pct', 4) }}% tariff escalation. O&amp;M is displayed as a planning reference and is not silently subtracted from the persisted cashflow series.</p>
 </section>
 
-<section id="tab-capex-dpa" class="tab-panel">
+<section id="tab-capex-dpa" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-capex-dpa" tabindex="0" hidden>
   <h2>CAPEX vs DPA Comparison</h2>
   <p class="emi-help">
     Side-by-side cash purchase (CAPEX) versus Deferred Payment Agreement / loan (DPA).
@@ -804,7 +808,7 @@
   {% endif %}
 </section>
 
-<section id="tab-environmental" class="tab-panel">
+<section id="tab-environmental" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-environmental" tabindex="0" hidden>
   <div class="report-section-heading"><span class="report-eyebrow">ENVIRONMENTAL OUTCOME</span><h2>Annual avoided emissions</h2><p>Equivalents use the existing SIGNIX calculation pipeline.</p></div>
   <div class="environment-hero">
     <span>Annual CO₂ avoided</span><strong>{{ loc.co2_reduction_tons }} <small>tonnes/year</small></strong>
@@ -839,7 +843,7 @@
 
 {% block scripts %}
 
-<section id="tab-next-steps" class="tab-panel">
+<section id="tab-next-steps" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-next-steps" tabindex="0" hidden>
   <h2>{{ _('Application checklist') }}</h2>
   {% set checklist = loc.application_checklist %}
   {% if checklist and checklist.steps %}
@@ -927,6 +931,16 @@
   const status = document.getElementById('clone-status');
   const btn = document.getElementById('clone-run-btn');
   const locationId = panel.getAttribute('data-location-id');
+  const sourceSizingMode = panel.getAttribute('data-source-sizing-mode') || '';
+  const sourceBackup = panel.getAttribute('data-source-backup') === 'true';
+
+  function setCloneStatus(message, tone) {
+    status.classList.remove('hidden', 'is-loading', 'is-error', 'is-success');
+    status.classList.add('is-' + tone);
+    status.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+    status.setAttribute('aria-live', tone === 'error' ? 'assertive' : 'polite');
+    status.textContent = message;
+  }
 
   function syncValueUI() {
     const c = changeEl.value;
@@ -944,9 +958,27 @@
     else if (change === 'bill_offset') value = document.getElementById('clone-value-offset').value;
     else value = document.getElementById('clone-value-backup').value;
 
-    status.classList.remove('hidden');
-    status.textContent = 'Running alternate scenario…';
+    if (change === 'bill_offset' && (!Number.isFinite(Number(value)) || Number(value) < 20 || Number(value) > 100)) {
+      setCloneStatus('Enter a bill offset from 20% to 100%.', 'error');
+      document.getElementById('clone-value-offset').focus();
+      return;
+    }
+
+    const normalizedMode = change === 'bill_offset'
+      ? 'bill_offset_' + Number(value) + '%'
+      : String(value);
+    const isIdentical = (change === 'sizing_mode' && normalizedMode === sourceSizingMode)
+      || (change === 'bill_offset' && normalizedMode === sourceSizingMode)
+      || (change === 'needs_backup' && (String(value) === 'true') === sourceBackup);
+    if (isIdentical) {
+      setCloneStatus('Choose a value different from this saved estimate before cloning.', 'error');
+      status.focus();
+      return;
+    }
+
+    setCloneStatus('Running alternate scenario…', 'loading');
     btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
     try {
       const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
       const res = await fetch('/api/locations/' + locationId + '/scenarios', {
@@ -956,15 +988,19 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        status.textContent = data.error || ('Failed (' + res.status + ')');
+        setCloneStatus(data.error || ('Scenario could not be created (' + res.status + ').'), 'error');
         btn.disabled = false;
+        btn.setAttribute('aria-busy', 'false');
+        status.focus();
         return;
       }
-      status.textContent = 'Scenario saved — opening compare…';
+      setCloneStatus('Scenario saved — opening compare…', 'success');
       window.location.href = data.compare_url || data.redirect_url || '/compare';
     } catch (err) {
-      status.textContent = 'Network error — try again.';
+      setCloneStatus('The scenario service is unavailable. Try again.', 'error');
       btn.disabled = false;
+      btn.setAttribute('aria-busy', 'false');
+      status.focus();
     }
   });
 })();

@@ -295,7 +295,7 @@
   function setViewMode(mode){
     if(mode==='satellite'&&!(siteRoofModel&&siteRoofModel.imagery&&siteRoofModel.imagery.available))return;
     viewMode=['3d','top','wireframe','satellite'].indexOf(mode)>=0?mode:'3d';
-    document.querySelectorAll('[data-roof3d-view]').forEach(function(button){button.classList.toggle('active',button.dataset.roof3dView===viewMode);});
+    document.querySelectorAll('[data-roof3d-view]').forEach(function(button){var active=button.dataset.roof3dView===viewMode;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
     if(roofPlanesGroup)roofPlanesGroup.traverse(function(obj){if(obj.material&&obj.userData.kind==='roof-surface'){obj.material.wireframe=false;obj.material.transparent=viewMode==='wireframe';obj.material.opacity=viewMode==='wireframe'?.12:1;obj.visible=true;}if(obj.userData.kind==='roof-edge')obj.visible=true;});
     if(panelsGroup)panelsGroup.visible=viewMode!=='wireframe'&&(document.querySelector('[data-roof3d-layer="panels"]')?.checked!==false);
     if(structuresGroup)structuresGroup.traverse(function(obj){if(obj.material)obj.material.wireframe=viewMode==='wireframe';});
@@ -566,8 +566,9 @@
     sun.style.top=(50-38*Math.cos(rad))+'%';
     sun.style.bottom='auto';
     sun.style.transform='translate(-50%,-50%)';
-    sun.setAttribute('aria-label','Solar orientation '+Math.round(deg)+' degrees');
     sun.title='Drag to change solar orientation';
+    ring.setAttribute('aria-valuenow',String(Math.round(deg)));
+    ring.setAttribute('aria-valuetext',Math.round(deg)+' degrees '+cardinalDirection(rad));
   }
 
   function updateOrientation(info){
@@ -640,7 +641,7 @@
     ring.addEventListener('pointerdown',function(e){dragging=true;userInteracted=true;ring.setPointerCapture?.(e.pointerId);setOrientation(readDeg(e),true);e.preventDefault();});
     ring.addEventListener('pointermove',move);
     ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){ring.addEventListener(ev,function(){dragging=false;});});
-    ring.setAttribute('role','slider');ring.setAttribute('tabindex','0');ring.setAttribute('aria-label','Solar panel orientation');
+    ring.setAttribute('role','slider');ring.setAttribute('tabindex','0');ring.setAttribute('aria-label','Solar panel orientation');ring.setAttribute('aria-valuemin','0');ring.setAttribute('aria-valuemax','359');
     ring.addEventListener('keydown',function(e){var step=e.shiftKey?15:5;if(e.key==='ArrowLeft'||e.key==='ArrowDown'){setOrientation(currentOrientationDeg-step,true);e.preventDefault();}else if(e.key==='ArrowRight'||e.key==='ArrowUp'){setOrientation(currentOrientationDeg+step,true);e.preventDefault();}else if(e.key==='Home'){setOrientation(180,true);e.preventDefault();}});
     updateCompassMarker();
   }

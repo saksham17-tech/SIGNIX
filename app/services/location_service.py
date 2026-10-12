@@ -270,16 +270,12 @@ def geocode(query):
 
     if not results:
         return {
-            "results": [
-                {
-                    "display_name": f"{query} (geocoding unavailable — try a fuller address)",
-                    "label": query,
-                    "lat": 28.6139,
-                    "lon": 77.2090,
-                    "type": "mock",
-                }
-            ],
-            "source": "mock_fallback",
+            "results": [],
+            "source": "unavailable",
+            "error": (
+                "Live place search is unavailable right now. "
+                "Try again, paste a Google Maps link, or use your current location."
+            ),
         }
     return {"results": results[:12], "source": source}
 

@@ -3,6 +3,8 @@ from datetime import datetime
 from app.models import User, UserLocation, db
 from werkzeug.security import generate_password_hash
 
+from app.services import estimation_service
+
 
 def login(test_client, email, password):
     return test_client.post(
@@ -91,3 +93,73 @@ def test_compare_displays_selected_location_data(app):
     assert b"3.25 kW" in response.data
     assert b"5.50 kW" in response.data
     assert b"Scenario comparison" in response.data or b"comparison" in response.data.lower()
+
+
+def test_compare_invalid_selection_is_announced(app):
+    with app.app_context():
+        user = User.query.filter_by(email="test@example.com").one()
+        db.session.add(make_location(user.id, "Only rooftop", 3.25, 5100.0))
+        db.session.commit()
+
+    test_client = app.test_client()
+    assert login(test_client, "test@example.com", "unused").status_code == 302
+
+    response = test_client.post("/compare", data={"location_ids": []})
+
+    assert response.status_code == 200
+    assert b'class="compare-selection-error" role="alert"' in response.data
+    assert b'aria-live="assertive"' in response.data
+
+
+def test_compare_duplicate_id_does_not_create_duplicate_scenario_columns(app):
+    with app.app_context():
+        user = User.query.filter_by(email="test@example.com").one()
+        location = make_location(user.id, "Single rooftop", 3.25, 5100.0)
+        db.session.add(location)
+        db.session.commit()
+        location_id = location.id
+
+    test_client = app.test_client()
+    assert login(test_client, "test@example.com", "unused").status_code == 302
+    response = test_client.get(f"/compare?ids={location_id},{location_id}")
+
+    assert response.status_code == 200
+    assert b"Scenario comparison" not in response.data
+    assert b'class="compare-selection-error" role="alert"' in response.data
+
+
+def test_clone_api_returns_actionable_validation_error(app, monkeypatch):
+    def reject_incomplete_request(**_kwargs):
+        raise estimation_service.InvalidEstimateInputError(
+            "change must be one of: sizing_mode, bill_offset, needs_backup, battery_kwh"
+        )
+
+    monkeypatch.setattr(
+        estimation_service, "clone_estimate_with_change", reject_incomplete_request
+    )
+    test_client = app.test_client()
+    assert login(test_client, "test@example.com", "unused").status_code == 302
+
+    response = test_client.post("/api/locations/999/scenarios", json={})
+
+    assert response.status_code == 400
+    assert "change must be one of" in response.get_json()["error"]
+
+
+def test_clone_api_reports_estimation_engine_failure(app, monkeypatch):
+    def fail_estimation(**_kwargs):
+        raise estimation_service.EstimationEngineError("controlled QA failure")
+
+    monkeypatch.setattr(
+        estimation_service, "clone_estimate_with_change", fail_estimation
+    )
+    test_client = app.test_client()
+    assert login(test_client, "test@example.com", "unused").status_code == 302
+
+    response = test_client.post(
+        "/api/locations/999/scenarios",
+        json={"change": "sizing_mode", "value": "roof_max"},
+    )
+
+    assert response.status_code == 500
+    assert response.get_json()["error"] == "Estimation engine failed: controlled QA failure"

@@ -193,7 +193,7 @@
     <p class="monetary-disclaimer compare-disclaimer">{{ monetary_disclaimer }}</p>
   </section>
   {% elif request.method == "POST" or request.args.get('ids') %}
-  <p class="compare-selection-error">{{ _('Select at least 2 of your saved estimates to compare them.') }}</p>
+  <p class="compare-selection-error" role="alert" aria-live="assertive">{{ _('Select at least 2 of your saved estimates to compare them.') }}</p>
   {% endif %}
   {% endif %}
 </section>

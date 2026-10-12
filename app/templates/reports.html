@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ _('SIGNIX — Reports') }}{% endblock %}
+
+{% block content %}
+<section class="dashboard-hero reports-hero">
+  <p class="console-index">{{ _('SAVED ANALYSIS') }}</p>
+  <h1>{{ _('Reports') }}</h1>
+  <p class="tagline">{{ _('Open the complete assumptions, system, generation, and financial view for any saved estimate.') }}</p>
+</section>
+
+<section aria-labelledby="reports-list-title">
+  <div class="reports-list-heading">
+    <h2 id="reports-list-title" class="section-title">{{ _('All saved reports') }}</h2>
+    <a class="btn-secondary" href="{{ url_for('pages.index') }}">{{ _('Start a new estimate') }}</a>
+  </div>
+  {% if locations %}
+  <div class="reports-table-wrap">
+    <table class="reports-table">
+      <thead>
+        <tr>
+          <th>{{ _('Address') }}</th>
+          <th>{{ _('System') }}</th>
+          <th>{{ _('Annual generation') }}</th>
+          <th>{{ _('Monthly savings') }}</th>
+          <th><span class="sr-only">{{ _('Action') }}</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for loc in locations %}
+        <tr>
+          <td>{{ loc.address[:80] }}{% if loc.address|length > 80 %}…{% endif %}</td>
+          <td>{{ loc.system_size }} kW</td>
+          <td>{{ '{:,.0f}'.format(loc.annual_generation or 0) }} kWh</td>
+          <td>₹{{ '{:,.0f}'.format(loc.monthly_savings or 0) }}</td>
+          <td><a href="{{ url_for('pages.report', location_id=loc.id) }}">{{ _('Open report') }} <span aria-hidden="true">→</span></a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state reports-empty">
+    <h3>{{ _('No saved reports yet') }}</h3>
+    <p>{{ _('Locate a property and complete an estimate to create your first report.') }}</p>
+    <a class="btn-grad" href="{{ url_for('pages.index') }}">{{ _('Start an estimate') }}</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

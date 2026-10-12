@@ -17,6 +17,8 @@ const SignixMapStore = {
   obstructionPolygons: [], // array of {id, coords}
   currentCenter: { lat: 28.6139, lng: 77.2090 }, // default: New Delhi
   locationMarker: null, // pin for searched / Maps-link location
+  recenterTimer: null,
+  resizeObserver: null,
 };
 
 function initMap() {
@@ -157,7 +159,28 @@ function initMap() {
       SignixMapStore.obstructionPolygons.push({ id: layer.obstructionId, coords: latlngs });
     }
     recalculateAreas();
+    setMapFeedback(
+      SignixMapStore.currentMode === 'roof'
+        ? 'Roof boundary saved for this estimate. You can now mark obstructions.'
+        : 'Obstruction added and excluded from the usable-area readout.',
+      'success'
+    );
   });
+
+  SignixMapStore.map.on(L.Draw.Event.DRAWSTART, function () {
+    document.getElementById('cancel-draw-btn')?.classList.remove('hidden');
+    setMapFeedback('Click each roof corner, then click the first point to finish.', 'neutral');
+  });
+  SignixMapStore.map.on(L.Draw.Event.DRAWSTOP, function () {
+    document.getElementById('cancel-draw-btn')?.classList.add('hidden');
+  });
+
+  if ('ResizeObserver' in window) {
+    SignixMapStore.resizeObserver = new ResizeObserver(() => {
+      try { SignixMapStore.map.invalidateSize(false); } catch (e) { /* map may be closing */ }
+    });
+    SignixMapStore.resizeObserver.observe(document.getElementById('map'));
+  }
 
   setMode('roof');
 }
@@ -269,6 +292,13 @@ function recalculateAreas() {
   updateAreaReadout(roofArea, obstructedArea, usableArea, systemSizeKw);
   const btn = document.getElementById('start-estimation-btn');
   if (btn) btn.disabled = !SignixMapStore.roofPolygonLatLngs;
+  const status = document.getElementById('estimate-action-status');
+  if (status) {
+    status.textContent = SignixMapStore.roofPolygonLatLngs
+      ? 'Roof boundary ready. Review the assumptions, then start the estimate.'
+      : 'Draw a roof boundary to enable the estimate.';
+    status.className = `estimate-action-status is-${SignixMapStore.roofPolygonLatLngs ? 'ready' : 'neutral'}`;
+  }
 }
 
 function updateAreaReadout(roofArea, obstructedArea, usableArea, systemSizeKw) {
@@ -288,7 +318,16 @@ function setMode(mode) {
   if (roofBtn && obsBtn) {
     roofBtn.classList.toggle('active', mode === 'roof');
     obsBtn.classList.toggle('active', mode === 'obstruction');
+    roofBtn.setAttribute('aria-pressed', String(mode === 'roof'));
+    obsBtn.setAttribute('aria-pressed', String(mode === 'obstruction'));
   }
+}
+
+function setMapFeedback(message, tone = 'neutral') {
+  const feedback = document.getElementById('map-feedback');
+  if (!feedback) return;
+  feedback.textContent = message;
+  feedback.className = `map-feedback is-${tone}`;
 }
 
 function startDrawing() {
@@ -296,7 +335,7 @@ function startDrawing() {
     SignixMapStore.roofDrawer.enable();
   } else {
     if (!SignixMapStore.roofPolygonLatLngs) {
-      alert('Draw the rooftop boundary first, then mark obstructions inside it.');
+      setMapFeedback('Draw the rooftop boundary first, then mark obstructions inside it.', 'error');
       setMode('roof');
       return;
     }
@@ -304,10 +343,18 @@ function startDrawing() {
   }
 }
 
+function cancelDrawing() {
+  SignixMapStore.roofDrawer?.disable();
+  SignixMapStore.obstructionDrawer?.disable();
+  document.getElementById('cancel-draw-btn')?.classList.add('hidden');
+  setMapFeedback('Drawing cancelled. Existing roof and obstruction markings were kept.', 'neutral');
+}
+
 function clearObstructions() {
   SignixMapStore.obstructionLayerGroup.clearLayers();
   SignixMapStore.obstructionPolygons = [];
   recalculateAreas();
+  setMapFeedback('All obstruction markings were cleared.', 'neutral');
 }
 
 function clearAll() {
@@ -316,6 +363,7 @@ function clearAll() {
   SignixMapStore.roofPolygonLatLngs = null;
   SignixMapStore.obstructionPolygons = [];
   recalculateAreas();
+  setMapFeedback('Roof boundary and obstruction markings were cleared.', 'neutral');
 }
 
 // NASA GIBS imagery typically lags ~1-2 days behind real time; step back a
@@ -326,7 +374,7 @@ function getRecentGibsDate() {
   return d.toISOString().split('T')[0];
 }
 
-function setMapCenter(lat, lng, zoom) {
+function setMapCenter(lat, lng, zoom, address) {
   // Prefer native tile zoom (≤19) so imagery stays sharp for rooftop tracing.
   const z = Math.min(zoom || 19, 21);
   lat = Number(lat);
@@ -337,6 +385,7 @@ function setMapCenter(lat, lng, zoom) {
   }
   SignixMapStore.currentCenter = { lat, lng };
   if (!SignixMapStore.map) return;
+  if (SignixMapStore.recenterTimer) clearTimeout(SignixMapStore.recenterTimer);
 
   // Ensure container has size (helps when map was laid out early)
   try { SignixMapStore.map.invalidateSize(true); } catch (e) { /* ignore */ }
@@ -352,10 +401,17 @@ function setMapCenter(lat, lng, zoom) {
       riseOnHover: true,
     }).addTo(SignixMapStore.map);
   }
-  SignixMapStore.locationMarker.bindPopup('Selected location<br>' + lat.toFixed(6) + ', ' + lng.toFixed(6)).openPopup();
+  const popup = document.createElement('div');
+  const popupTitle = document.createElement('strong');
+  popupTitle.textContent = address || 'Selected location';
+  const popupCoords = document.createElement('span');
+  popupCoords.className = 'map-popup-coordinates';
+  popupCoords.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  popup.append(popupTitle, document.createElement('br'), popupCoords);
+  SignixMapStore.locationMarker.bindPopup(popup).openPopup();
 
   // Second recenter after tiles settle (fixes occasional wrong viewport)
-  setTimeout(() => {
+  SignixMapStore.recenterTimer = setTimeout(() => {
     try {
       SignixMapStore.map.invalidateSize(true);
       SignixMapStore.map.setView([lat, lng], z);
@@ -378,12 +434,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const roofBtn = document.getElementById('mode-roof-btn');
     const obsBtn = document.getElementById('mode-obstruction-btn');
     const drawBtn = document.getElementById('draw-btn');
+    const cancelDrawBtn = document.getElementById('cancel-draw-btn');
     const clearObsBtn = document.getElementById('clear-obstructions-btn');
     const clearAllBtn = document.getElementById('clear-all-btn');
 
     if (roofBtn) roofBtn.addEventListener('click', () => setMode('roof'));
     if (obsBtn) obsBtn.addEventListener('click', () => setMode('obstruction'));
     if (drawBtn) drawBtn.addEventListener('click', startDrawing);
+    if (cancelDrawBtn) cancelDrawBtn.addEventListener('click', cancelDrawing);
     if (clearObsBtn) clearObsBtn.addEventListener('click', clearObstructions);
     if (clearAllBtn) clearAllBtn.addEventListener('click', clearAll);
   }

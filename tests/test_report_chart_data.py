@@ -240,6 +240,15 @@ def test_report_renders_serialized_chart_contract(client, app):
     assert 'id="roofUtilizationChart"' in body
     assert 'id="financing-controls"' not in body
     assert 'js/vendor/chart.umd.min.js' in body
+    assert 'role="tablist"' in body
+    assert 'id="report-tab-overview"' in body
+    assert 'aria-selected="true"' in body
+    assert 'role="tabpanel" aria-labelledby="report-tab-generation"' in body
+    assert 'data-roof3d-view="3d" aria-pressed="true"' in body
+    assert 'class="roof3d-compass-ring" role="slider"' in body
+    assert 'data-source-sizing-mode=' in body
+    assert 'Choose a value different from this saved estimate before cloning.' in body
+    assert 'Enter a bill offset from 20% to 100%.' in body
 
 
 def _financing_location(app):

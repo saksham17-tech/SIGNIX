@@ -72,48 +72,117 @@ function initSearch() {
   const resultsBox = document.getElementById('search-results');
   const mapsInput = document.getElementById('maps-link-input');
   const mapsBtn = document.getElementById('maps-link-btn');
+  const clearBtn = document.getElementById('search-clear-btn');
+  const statusBox = document.getElementById('location-status');
 
   if (!searchBtn) return; // not on the landing page
+
+  let searchTimer = null;
+  let searchController = null;
+  let requestSequence = 0;
+  let lastSubmittedQuery = '';
+  let composing = false;
+
+  function setStatus(message, tone = 'neutral') {
+    if (!statusBox) return;
+    statusBox.className = `location-status is-${tone}`;
+    const text = statusBox.querySelector('span:last-child');
+    if (text) text.textContent = message;
+  }
+
+  function setButtonBusy(button, busy, busyLabel) {
+    if (!button) return;
+    button.disabled = busy;
+    button.setAttribute('aria-busy', String(busy));
+    const label = button.querySelector('span') || button;
+    if (!button.dataset.defaultLabel) button.dataset.defaultLabel = label.textContent.trim();
+    label.textContent = busy ? busyLabel : button.dataset.defaultLabel;
+  }
+
+  function clearResults() {
+    if (resultsBox) resultsBox.replaceChildren();
+  }
+
+  function selectLocation(location, sourceLabel) {
+    const lat = Number(location.lat);
+    const lng = Number(location.lon ?? location.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      setStatus('That result did not contain valid coordinates. Choose another result.', 'error');
+      return false;
+    }
+    const address = location.address || location.display_name || location.label || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    requestSequence += 1;
+    if (searchController) searchController.abort();
+    setButtonBusy(searchBtn, false, 'Searching…');
+    SignixFormStore.selectedAddress = address;
+    SignixFormStore.selectedLatLng = { lat, lng };
+    input.value = address;
+    clearBtn?.classList.remove('hidden');
+    clearResults();
+    applyLocationContext({
+      state: location.state,
+      city: location.city,
+      address,
+      pincode: location.postcode,
+      lat,
+      lng,
+    });
+    if (typeof setMapCenter === 'function') setMapCenter(lat, lng, 19, address);
+    setStatus(`${sourceLabel}: ${address} · ${lat.toFixed(5)}, ${lng.toFixed(5)}`, 'success');
+    return true;
+  }
+
+  function renderSearchResults(results) {
+    clearResults();
+    if (!results.length) return;
+    const fragment = document.createDocumentFragment();
+    results.forEach((result) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'search-result-item';
+      button.setAttribute('role', 'option');
+      const title = document.createElement('span');
+      title.className = 'result-title';
+      title.textContent = result.label || result.display_name || 'Unnamed result';
+      button.appendChild(title);
+      const detailText = result.display_name && result.display_name !== title.textContent
+        ? result.display_name
+        : (result.type || '');
+      if (detailText) {
+        const detail = document.createElement('span');
+        detail.className = 'result-sub';
+        detail.textContent = detailText;
+        button.appendChild(detail);
+      }
+      button.addEventListener('click', () => selectLocation(result, 'Searched location selected'));
+      fragment.appendChild(button);
+    });
+    resultsBox.appendChild(fragment);
+  }
 
   async function applyMapsLink() {
     if (!mapsInput) return;
     const url = mapsInput.value.trim();
     if (!url) {
-      alert('Paste a Google Maps link first.');
+      setStatus('Paste a Google Maps link or latitude, longitude first.', 'error');
+      mapsInput.focus();
       return;
     }
-    if (resultsBox) resultsBox.innerHTML = '<p class="search-status">Reading Google Maps link…</p>';
+    setButtonBusy(mapsBtn, true, 'Reading…');
+    setStatus('Reading the shared map location…', 'loading');
+    clearResults();
     try {
       const res = await fetch(`${PARSE_MAPS_URL}?url=${encodeURIComponent(url)}`);
       const data = await res.json();
       if (!res.ok) {
-        if (resultsBox) resultsBox.innerHTML = '';
-        alert(data.error || 'Could not read that Maps link.');
+        setStatus(data.error || 'Could not read that Maps link. Search by address instead.', 'error');
         return;
       }
-      const lat = Number(data.lat);
-      const lon = Number(data.lon);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        alert('Invalid coordinates from Maps link.');
-        return;
-      }
-      SignixFormStore.selectedLatLng = { lat, lng: lon };
-      SignixFormStore.selectedAddress = data.address || (lat + ', ' + lon);
-      if (input) input.value = SignixFormStore.selectedAddress;
-      applyLocationContext({ address: SignixFormStore.selectedAddress, lat, lng: lon });
-      if (typeof setMapCenter === 'function') {
-        setMapCenter(lat, lon, 19);
-        // Re-center after a tick in case the map was still settling
-        setTimeout(() => setMapCenter(lat, lon, 19), 400);
-      }
-      if (resultsBox) {
-        resultsBox.innerHTML =
-          '<p class="search-status">Pinned at ' + lat.toFixed(5) + ', ' + lon.toFixed(5) +
-          ' — draw your rooftop around the blue marker.</p>';
-      }
+      selectLocation(data, 'Shared pin selected');
     } catch (err) {
-      if (resultsBox) resultsBox.innerHTML = '';
-      alert('Failed to open Maps link. Check your connection and try again.');
+      setStatus('The Maps link could not be read. Check your connection or search by address.', 'error');
+    } finally {
+      setButtonBusy(mapsBtn, false, 'Reading…');
     }
   }
 
@@ -129,107 +198,127 @@ function initSearch() {
 
   async function runSearch() {
     const query = input.value.trim();
-    if (!query) return;
-    resultsBox.innerHTML = '<p class="search-status">Searching for places…</p>';
+    if (!query) {
+      setStatus('Enter an address, landmark, society, or place to search.', 'error');
+      input.focus();
+      return;
+    }
+    if (query === lastSubmittedQuery && resultsBox.children.length) return;
+    lastSubmittedQuery = query;
+    const sequence = ++requestSequence;
+    if (searchController) searchController.abort();
+    const controller = new AbortController();
+    let searchTimedOut = false;
+    searchController = controller;
+    const timeoutId = setTimeout(() => {
+      searchTimedOut = true;
+      controller.abort();
+    }, 12000);
+    setButtonBusy(searchBtn, true, 'Searching…');
+    setStatus(`Searching for “${query}”…`, 'loading');
+    clearResults();
 
     try {
-      const res = await fetch(`${GEOCODE_URL}?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`${GEOCODE_URL}?q=${encodeURIComponent(query)}`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
       const data = await res.json();
-      const list = data.results || [];
-      if (data.source === 'mock_fallback') {
-        resultsBox.innerHTML =
-          '<p class="search-status">Live geocoding unavailable. Showing a fallback — try a fuller address (society / road / city).</p>';
+      if (sequence !== requestSequence) return;
+      if (!res.ok || !data || !Array.isArray(data.results)) {
+        throw new Error((data && data.error) || 'Malformed search response');
       }
-      renderSearchResults(list, data.source);
+      const list = data.results || [];
+      if (!list.length) {
+        const message = data.error || 'No matching places found. Add a city, state, postcode, or nearby landmark.';
+        setStatus(message, data.source === 'unavailable' ? 'error' : 'empty');
+        return;
+      }
+      renderSearchResults(list);
+      setStatus(`${list.length} location suggestion${list.length === 1 ? '' : 's'} found. Choose one to move the map.`, 'neutral');
     } catch (err) {
-      resultsBox.innerHTML = '<p class="search-status">Could not search right now. Check your connection and try again.</p>';
+      if (sequence !== requestSequence) return;
+      if (err.name === 'AbortError' && !searchTimedOut) return;
+      setStatus(
+        searchTimedOut
+          ? 'Place search timed out. Try again or use a Maps link.'
+          : 'Place search is unavailable. Check your connection, try again, or use another location method.',
+        'error'
+      );
+    } finally {
+      clearTimeout(timeoutId);
+      if (sequence === requestSequence) setButtonBusy(searchBtn, false, 'Searching…');
     }
   }
 
-  searchBtn.addEventListener('click', runSearch);
+  function queueSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 250);
+  }
+
+  searchBtn.addEventListener('click', queueSearch);
+  input.addEventListener('compositionstart', () => { composing = true; });
+  input.addEventListener('compositionend', () => { composing = false; });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !composing) {
       e.preventDefault();
-      runSearch();
+      queueSearch();
     }
+  });
+  input.addEventListener('input', () => {
+    clearBtn?.classList.toggle('hidden', !input.value);
+    lastSubmittedQuery = '';
+  });
+  clearBtn?.addEventListener('click', () => {
+    requestSequence += 1;
+    searchController?.abort();
+    clearTimeout(searchTimer);
+    setButtonBusy(searchBtn, false, 'Searching…');
+    input.value = '';
+    clearBtn.classList.add('hidden');
+    clearResults();
+    setStatus('Search cleared. The current map marker is unchanged until you choose another property.', 'neutral');
+    input.focus();
   });
 
   locateBtn.addEventListener('click', () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by this browser.');
+      setStatus('This browser does not support device location. Search by address or paste a Maps link.', 'error');
       return;
     }
-    resultsBox.innerHTML = '<p class="search-status">Getting your location…</p>';
+    if (window.isSecureContext === false && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+      setStatus('Device location requires a secure HTTPS connection. Search by address instead.', 'error');
+      return;
+    }
+    locateBtn.disabled = true;
+    locateBtn.setAttribute('aria-busy', 'true');
+    setStatus('Requesting your device location…', 'loading');
+    clearResults();
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude, longitude } = pos.coords;
-      SignixFormStore.selectedLatLng = { lat: latitude, lng: longitude };
-      if (typeof setMapCenter === 'function') {
-        setMapCenter(latitude, longitude, 19);
-      }
-
+      let address = `Device location · ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
       try {
         const res = await fetch(`${REVERSE_GEOCODE_URL}?lat=${latitude}&lon=${longitude}`);
         const data = await res.json();
-        SignixFormStore.selectedAddress = data.address;
-        input.value = SignixFormStore.selectedAddress;
-        resultsBox.innerHTML = '';
+        if (res.ok && data.address) address = data.address;
       } catch (err) {
-        SignixFormStore.selectedAddress = 'Current location';
-        input.value = SignixFormStore.selectedAddress;
-        resultsBox.innerHTML = '';
+        // Exact device coordinates remain valid when address lookup is unavailable.
+      } finally {
+        selectLocation({ lat: latitude, lon: longitude, address }, 'Device location selected');
+        locateBtn.disabled = false;
+        locateBtn.setAttribute('aria-busy', 'false');
       }
-    }, () => {
-      resultsBox.innerHTML = '';
-      alert('Unable to retrieve your location. Allow location access or search by address.');
-    }, { enableHighAccuracy: true, timeout: 12000 });
+    }, (error) => {
+      const messages = {
+        1: 'Location permission was denied. Enable it in browser settings or search by address.',
+        2: 'Your device location is unavailable. Try again outdoors or search by address.',
+        3: 'Device location timed out. Try again or search by address.',
+      };
+      setStatus(messages[error.code] || 'Unable to retrieve your location. Search by address instead.', 'error');
+      locateBtn.disabled = false;
+      locateBtn.setAttribute('aria-busy', 'false');
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   });
-
-  function renderSearchResults(results, source) {
-    if (!results.length) {
-      resultsBox.innerHTML =
-        '<p class="search-status">No results found. Try adding city/state (e.g. “GL Bajaj Greater Noida”) or a nearby landmark.</p>';
-      return;
-    }
-    resultsBox.innerHTML = '';
-    if (source) {
-      const meta = document.createElement('p');
-      meta.className = 'search-status';
-      meta.textContent = results.length + ' place(s) found' + (source && source !== 'mock_fallback' ? '' : '');
-      resultsBox.appendChild(meta);
-    }
-    results.forEach(r => {
-      const div = document.createElement('div');
-      div.className = 'search-result-item';
-      const title = r.label || r.display_name;
-      const sub = (r.label && r.display_name && r.label !== r.display_name)
-        ? r.display_name
-        : (r.type ? String(r.type) : '');
-      div.innerHTML =
-        '<div class="result-title"></div>' +
-        (sub ? '<div class="result-sub"></div>' : '');
-      div.querySelector('.result-title').textContent = title;
-      if (sub) div.querySelector('.result-sub').textContent = sub;
-      div.title = r.display_name || title;
-      div.addEventListener('click', () => {
-        SignixFormStore.selectedAddress = r.display_name || title;
-        SignixFormStore.selectedLatLng = { lat: r.lat, lng: r.lon };
-        input.value = SignixFormStore.selectedAddress;
-        applyLocationContext({
-          state: r.state,
-          city: r.city,
-          address: r.display_name,
-          pincode: r.postcode,
-          lat: r.lat,
-          lng: r.lon,
-        });
-        if (typeof setMapCenter === 'function') {
-          setMapCenter(r.lat, r.lon, 19);
-        }
-        resultsBox.innerHTML = '';
-      });
-      resultsBox.appendChild(div);
-    });
-  }
 }
 
 function initSystemOptions() {
@@ -252,6 +341,13 @@ function initSystemOptions() {
 function initEstimationButton() {
   const btn = document.getElementById('start-estimation-btn');
   if (!btn) return;
+  const status = document.getElementById('estimate-action-status');
+
+  function setEstimateStatus(message, tone = 'neutral') {
+    if (!status) return;
+    status.textContent = message;
+    status.className = `estimate-action-status is-${tone}`;
+  }
 
   function showEstimateResult(data) {
     const resultPanel = document.getElementById('estimate-result');
@@ -462,7 +558,8 @@ function initEstimationButton() {
     const polygon = getCurrentPolygon();
     const obstructions = typeof getCurrentObstructions === 'function' ? getCurrentObstructions() : [];
     if (!polygon) {
-      alert('Please draw your rooftop boundary on the map first.');
+      setEstimateStatus('Draw a rooftop boundary on the map before starting the estimate.', 'error');
+      document.getElementById('map-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
     if (!SignixFormStore.selectedLatLng) {
@@ -507,6 +604,7 @@ function initEstimationButton() {
 
     document.getElementById('loading-panel').classList.remove('hidden');
     btn.disabled = true;
+    setEstimateStatus('Generating the planning estimate…', 'loading');
 
     try {
       const csrfToken =
@@ -549,54 +647,68 @@ function initEstimationButton() {
       try {
         data = rawText ? JSON.parse(rawText) : {};
       } catch (parseErr) {
-        const snippet = (rawText || '').replace(/\s+/g, ' ').slice(0, 180);
-        alert(
-          'Server returned an invalid response (HTTP ' + res.status + ').\n' +
-          'Expected JSON but got: ' + (snippet || '(empty body)') + '\n' +
-          'Check the Flask terminal for errors. If the DB is old, delete solar_app.db and restart.'
-        );
+        setEstimateStatus(`The estimate service returned an unreadable response (HTTP ${res.status}). Please retry.`, 'error');
         return;
       }
       if (res.status === 401) {
-        alert(data.error || 'Please log in again, then retry the estimate.');
+        setEstimateStatus(data.error || 'Please log in again, then retry the estimate.', 'error');
         if (data.login_url) window.location.href = data.login_url;
         return;
       }
       if (!res.ok) {
-        alert(data.error || ('Estimation failed (HTTP ' + res.status + ').'));
+        setEstimateStatus(data.error || (`Estimation failed (HTTP ${res.status}).`), 'error');
         return;
       }
       if (data.redirect_url) {
         showEstimateResult(data);
+        setEstimateStatus('Estimate complete. Review the snapshot below or open the full report.', 'success');
+        document.getElementById('estimate-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } else {
-        alert(data.error || 'Something went wrong generating your estimate.');
+        setEstimateStatus(data.error || 'The estimate could not be generated. Please retry.', 'error');
       }
     } catch (err) {
       console.error(err);
-      alert('Estimation failed: ' + (err && err.message ? err.message : 'network or server error. Check the Flask terminal.'));
+      setEstimateStatus(`Estimation failed: ${err && err.message ? err.message : 'network or server error.'}`, 'error');
     } finally {
       document.getElementById('loading-panel').classList.add('hidden');
-      btn.disabled = false;
+      btn.disabled = !getCurrentPolygon();
     }
   });
 }
 
 // -------------------------------------------------------- Report page -----
 function initTabs() {
-  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabButtons = Array.from(document.querySelectorAll('.tab-btn[role="tab"]'));
   if (!tabButtons.length) return;
 
-  tabButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      const panel = document.getElementById(`tab-${btn.dataset.tab}`);
-      if (panel) panel.classList.add('active');
-      // Charts in previously-hidden panels need a resize after becoming visible
-      requestAnimationFrame(() => {
-        window.SIGNIX_REPORT_CHARTS?.resize?.();
-      });
+  function activateTab(nextTab, moveFocus = false) {
+    tabButtons.forEach((button) => {
+      const selected = button === nextTab;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      const panel = document.getElementById(button.getAttribute('aria-controls'));
+      if (panel) {
+        panel.classList.toggle('active', selected);
+        panel.hidden = !selected;
+      }
+    });
+    if (moveFocus) nextTab.focus();
+    // Charts in previously-hidden panels need a resize after becoming visible.
+    requestAnimationFrame(() => window.SIGNIX_REPORT_CHARTS?.resize?.());
+  }
+
+  tabButtons.forEach((btn, index) => {
+    btn.addEventListener('click', () => activateTab(btn));
+    btn.addEventListener('keydown', (event) => {
+      let nextIndex = null;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabButtons.length;
+      if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabButtons.length) % tabButtons.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = tabButtons.length - 1;
+      if (nextIndex === null) return;
+      event.preventDefault();
+      activateTab(tabButtons[nextIndex], true);
     });
   });
 }
