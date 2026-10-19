@@ -4,9 +4,32 @@ from flask_login import current_user, login_required
 from app.models import db
 from app.services import rooftop_design_service
 from app.services import rooftop_ingestion_service
+from app.services import rooftop_layout_service
 
 
 rooftop_design_bp = Blueprint("rooftop_design", __name__)
+
+
+@rooftop_design_bp.post("/api/locations/<int:location_id>/rooftop-layout/accept")
+@login_required
+def accept_rooftop_layout(location_id):
+    try:
+        result = rooftop_layout_service.accept_layout(
+            location_id, current_user.id, request.get_json(silent=True)
+        )
+    except rooftop_layout_service.LayoutAcceptanceError as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc), code=exc.code, details=exc.details), exc.status
+    except rooftop_design_service.RooftopDesignInputError as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc), code="invalid_design"), 400
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Rooftop layout acceptance failed")
+        return jsonify(error="Layout recalculation could not be completed", code="recalculation_failed"), 500
+    if result is None:
+        return jsonify(error="Location not found", code="location_not_found"), 404
+    return jsonify(result), 200 if result.get("idempotent") else 201
 
 
 @rooftop_design_bp.get("/api/locations/<int:location_id>/rooftop-design")

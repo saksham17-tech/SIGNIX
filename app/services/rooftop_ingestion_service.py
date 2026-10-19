@@ -6,6 +6,8 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import math
+import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
@@ -116,9 +118,19 @@ def _status_for_exception(exc):
 
 
 def _diagnostic(exc):
+    message = str(exc)
+    message = re.sub(
+        r"(?i)([?&](?:key|api[_-]?key|token)=)[^&\s]+",
+        r"\1[REDACTED]",
+        message,
+    )
+    for config_name in ("GOOGLE_SOLAR_API_KEY", "GOOGLE_MAPS_API_KEY", "GEMINI_API_KEY"):
+        secret = current_app.config.get(config_name)
+        if secret:
+            message = message.replace(str(secret), "[REDACTED]")
     return {
         "exception_type": type(exc).__name__,
-        "message": str(exc)[:500],
+        "message": message[:500],
     }
 
 
@@ -162,6 +174,12 @@ def _bbox_polygon(bbox):
         east, north = float(ne["longitude"]), float(ne["latitude"])
     except (KeyError, TypeError, ValueError):
         return None
+    if not all(math.isfinite(value) for value in (west, south, east, north)):
+        return None
+    if not (-180 <= west <= 180 and -180 <= east <= 180
+            and -90 <= south <= 90 and -90 <= north <= 90
+            and west < east and south < north):
+        return None
     return {
         "type": "Polygon",
         "coordinates": [[
@@ -183,6 +201,13 @@ def normalize_building_insights(payload, selected_ring, requested_lat, requested
         center_lng = float(center.get("longitude", requested_lng))
     except (TypeError, ValueError) as exc:
         raise ValueError("Google Solar building center is malformed") from exc
+    if not (
+        math.isfinite(center_lat)
+        and math.isfinite(center_lng)
+        and -90 <= center_lat <= 90
+        and -180 <= center_lng <= 180
+    ):
+        raise ValueError("Google Solar building center is malformed")
     distance = roof_model._meters(
         requested_lat, requested_lng, center_lat, center_lng
     )
@@ -200,6 +225,7 @@ def normalize_building_insights(payload, selected_ring, requested_lat, requested
         footprint = _bbox_polygon(segment.get("boundingBox"))
         segments.append({
             "segment_index": index,
+            "geometry_kind": "axis_aligned_bounding_box",
             "pitch_degrees": segment.get("pitchDegrees"),
             "azimuth_degrees": segment.get("azimuthDegrees"),
             "area_meters2": stats.get("areaMeters2"),
@@ -209,6 +235,7 @@ def normalize_building_insights(payload, selected_ring, requested_lat, requested
             "plane_height_at_center_meters": segment.get(
                 "planeHeightAtCenterMeters"
             ),
+            "elevation_datum": "mean_sea_level",
             "annual_flux_kwh_m2": stats.get("sunshineQuantiles"),
         })
 
@@ -245,6 +272,10 @@ def normalize_building_insights(payload, selected_ring, requested_lat, requested
             "date": payload.get("imageryDate"),
             "quality": payload.get("imageryQuality"),
         },
+        "limitations": [
+            "Roof segment geometry is supplied as an axis-aligned bounding box, not a surveyed facet polygon",
+            "Provider segment planes remain constrained by the authoritative user-drawn boundary",
+        ],
     }
 
 
@@ -477,10 +508,19 @@ def ingest(location_id, user_id, providers=None, include_data_layers=False, refr
             if current
             else []
         )
+        provider_inputs_changed = any(
+            (item.provider if isinstance(item, RooftopDesignSource) else item.get("provider"))
+            == PROVIDER_GOOGLE
+            for item in new_sources
+        )
         current = rooftop_design_service.create_revision(
             location_id,
             user_id,
-            {"advisory_sources": existing + new_sources},
+            {
+                "advisory_sources": existing + new_sources,
+                **({"_invalidate_derived_state": "provider_roof_or_shade_data_changed"}
+                   if provider_inputs_changed else {}),
+            },
             base_design=current,
         )
     elif current is None:
@@ -554,12 +594,14 @@ def legacy_roof_model_payload(design, location=None):
         footprint = ((segment.get("provider_footprint_geojson") or {}).get("coordinates") or [[]])[0]
         segments.append({
             "segmentIndex": segment.get("segment_index"),
+            "geometryKind": segment.get("geometry_kind") or "axis_aligned_bounding_box",
             "pitchDegrees": segment.get("pitch_degrees"),
             "azimuthDegrees": segment.get("azimuth_degrees"),
             "areaMeters2": segment.get("area_meters2"),
             "groundAreaMeters2": segment.get("ground_area_meters2"),
             "center": segment.get("center"),
             "planeHeightAtCenterMeters": segment.get("plane_height_at_center_meters"),
+            "elevationDatum": segment.get("elevation_datum") or "mean_sea_level",
             "footprint": footprint[:-1] if footprint and footprint[0] == footprint[-1] else footprint,
         })
     layers = next(
@@ -596,6 +638,14 @@ def legacy_roof_model_payload(design, location=None):
         "imageryDate": (normalized.get("imagery") or {}).get("date"),
         "matchedDistanceMeters": normalized.get("matched_distance_meters"),
         "warnings": list((layers.diagnostics or {}).keys()) if layers else [],
+        "provenance": {
+            "provider": building.provider,
+            "data_type": building.data_type,
+            "source_version": building.source_version,
+            "retrieved_at": building.retrieved_at.isoformat() if building.retrieved_at else None,
+            "quality": building.quality,
+            "geometry_kind": "axis_aligned_bounding_box",
+        },
         "building": {
             "center": normalized.get("building_center"),
             "footprint": normalized.get("provider_building_footprint_geojson"),

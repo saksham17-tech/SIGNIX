@@ -1,5 +1,5 @@
 import math
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -199,6 +199,42 @@ def test_calculate_polygon_area_sqm_cross_checks_both_methods(monkeypatch):
     assert area == 120.0
 
 
+def test_zero_or_tiny_roof_is_not_given_fictitious_minimum_capacity():
+    empty = solar_logic.compute_system_sizing(usable_area_sqm=0)
+    tiny = solar_logic.compute_system_sizing(usable_area_sqm=2)
+
+    assert empty["roof_capacity_kw"] == 0
+    assert empty["recommended_kw"] == 0
+    assert empty["max_kw"] == 0
+    assert tiny["roof_capacity_kw"] == pytest.approx(0.2)
+    assert tiny["recommended_kw"] == pytest.approx(0.2)
+    assert tiny["recommended_kw"] <= tiny["roof_capacity_kw"]
+
+
+def test_emi_matches_independent_reducing_balance_calculation():
+    principal = 100_000
+    annual_rate_pct = 12
+    tenure_years = 1
+    monthly_rate = annual_rate_pct / 100 / 12
+    months = tenure_years * 12
+    expected = (
+        principal
+        * monthly_rate
+        * (1 + monthly_rate) ** months
+        / ((1 + monthly_rate) ** months - 1)
+    )
+
+    result = solar_logic.calculate_emi(principal, annual_rate_pct, tenure_years)
+
+    assert result["monthly_emi"] == pytest.approx(expected, abs=0.01)
+    assert result["total_payment"] == pytest.approx(
+        round(result["monthly_emi"] * months, 2)
+    )
+    assert result["total_interest"] == pytest.approx(
+        result["total_payment"] - principal
+    )
+
+
 def test_calculate_polygon_area_sqm_uses_local_area_when_methods_agree():
     coordinates = [[0.0, 0.0], [0.0, 0.001], [0.001, 0.001]]
     points = solar_logic._normalize_ring(coordinates)
@@ -271,6 +307,8 @@ def test_fetch_solar_data_uses_mock_profile_when_external_fetches_fail():
             "irradiance": mock_profile,
             "temperature": None,
             "source": "mock_fallback",
+            "profile_kind": "daily_horizontal_irradiance_kwh_per_m2",
+            "schema_version": "2.0",
         },
         ttl_hours=1,
     )
@@ -314,8 +352,113 @@ def test_fetch_solar_data_caches_successful_external_result(monkeypatch):
             "irradiance": irradiance,
             "temperature": temperature,
             "source": "nasa_power",
+            "profile_kind": "daily_horizontal_irradiance_kwh_per_m2",
+            "schema_version": "2.0",
         },
         ttl_days=30,
+    )
+
+
+def test_pvgis_preserves_monthly_specific_yield_units():
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {
+        "outputs": {
+            "monthly": {
+                "fixed": [
+                    {"month": month, "E_m": 200.0 + month}
+                    for month in range(1, 13)
+                ]
+            }
+        }
+    }
+    with patch.object(solar_logic.requests, "get", return_value=response):
+        profile, source = solar_logic.fetch_irradiance_pvgis(
+            28.6139, 77.2090, peak_power_kw=2.0
+        )
+
+    assert source == "pvgis"
+    assert profile["Jan"] == 100.5
+    assert profile["Dec"] == 106.0
+    assert response.json.call_count == 1
+
+
+def test_legacy_pvgis_cache_is_not_reinterpreted_with_new_units():
+    legacy = {
+        "irradiance": {month: 4.5 for month in solar_logic.MONTH_NAMES},
+        "temperature": None,
+        "source": "pvgis",
+    }
+    nasa_profile = {month: 5.0 for month in solar_logic.MONTH_NAMES}
+    with patch.object(
+        solar_logic, "get_cached_irradiance", return_value=legacy
+    ), patch.object(
+        solar_logic,
+        "fetch_irradiance_nasa_power",
+        return_value=(nasa_profile, None, "nasa_power"),
+    ) as nasa_fetch:
+        result = solar_logic.fetch_solar_data(28.6, 77.2)
+
+    assert result == (nasa_profile, None, "nasa_power", "high")
+    nasa_fetch.assert_called_once_with(28.6, 77.2)
+
+
+def test_saved_calculation_is_marked_stale_when_model_assumptions_change(app, monkeypatch):
+    from app.models import UserLocation, db
+
+    with app.app_context():
+        location = UserLocation(
+            user_id=1,
+            address="Versioned calculation",
+            latitude=28.6139,
+            longitude=77.2090,
+            polygon_geojson={
+                "type": "Polygon",
+                "coordinates": [[
+                    [77.2090, 28.6139], [77.2092, 28.6139],
+                    [77.2092, 28.6141], [77.2090, 28.6139],
+                ]],
+            },
+            system_size=1.0,
+            annual_generation=1400.0,
+            extras={
+                "assumption_fingerprint": solar_logic.current_assumption_fingerprint(),
+                "surface_generation": {"annual_generation_kwh": 1400.0},
+                "surface_generation_status": "current",
+            },
+        )
+        db.session.add(location)
+        db.session.commit()
+        assert location.to_dict()["calculation_status"] == "current"
+
+        monkeypatch.setattr(solar_logic, "CALCULATION_MODEL_VERSION", "test-change")
+        serialized = location.to_dict()
+        assert serialized["calculation_status"] == "stale_assumptions"
+        assert serialized["extras"]["surface_generation_status"] == "stale"
+        assert location.extras["surface_generation_status"] == "current"
+
+
+def test_degradation_and_financials_use_year_one_generation_once():
+    annual_generation = 1460.0
+    financials = solar_logic.calculate_financials(
+        system_size_kw=1.0,
+        annual_generation_kwh=annual_generation,
+        tariff_per_kwh=8.0,
+        property_type="residential",
+        load_profile="flat",
+        net_metering_mode="export_at_tariff",
+    )
+
+    assert financials["annual_savings"] == pytest.approx(annual_generation * 8.0)
+    assert financials["generation_25yr"][0] == annual_generation
+    assert financials["generation_25yr"][1] == pytest.approx(
+        annual_generation * (1 - 0.005), abs=0.1
+    )
+    independently_compounded = sum(
+        annual_generation * ((1 - 0.005) ** year) for year in range(25)
+    )
+    assert financials["lifetime_kwh"] == pytest.approx(
+        independently_compounded, abs=0.5
     )
 
 

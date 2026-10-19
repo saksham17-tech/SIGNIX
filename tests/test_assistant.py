@@ -18,8 +18,11 @@ def test_assistant_requires_login(app):
         "/api/assistant", json={"message": "How does SIGNIX work?"}
     )
 
-    assert response.status_code == 302
-    assert response.headers["Location"].startswith("/login?next=")
+    assert response.status_code == 401
+    assert response.get_json() == {
+        "error": "Authentication required. Please log in and try again.",
+        "login_url": "/login",
+    }
 
 
 def test_assistant_returns_gemini_response(client, app):

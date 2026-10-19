@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -10,6 +10,7 @@ from app.geo import (
 )
 from app import map_snapshot, roof_ai, roof_model
 from app.installer_export import build_roof_geojson
+from app.models import User, UserLocation, db
 
 
 INDIAN_RING_GEOJSON = [
@@ -131,3 +132,41 @@ def test_report_snapshot_and_installer_export_keep_canonical_order():
         77.2090,
         28.6139,
     ]
+
+
+def test_roof_layer_uses_interior_selection_point(client, app, monkeypatch):
+    with app.app_context():
+        user = User.query.filter_by(email="test@example.com").first()
+        location = UserLocation(
+            user_id=user.id,
+            address="Concave layer request",
+            latitude=28.6140,
+            longitude=77.2091,
+            polygon_geojson={
+                "type": "Polygon",
+                "coordinates": [INDIAN_RING_GEOJSON],
+            },
+        )
+        db.session.add(location)
+        db.session.commit()
+        location_id = location.id
+
+    app.config["GOOGLE_SOLAR_API_KEY"] = "test-key"
+    monkeypatch.setattr(roof_model, "_selection_point", lambda ring: (28.61395, 77.20905))
+    requested = []
+    monkeypatch.setattr(
+        roof_model,
+        "_data_layers",
+        lambda latitude, longitude: (
+            requested.append((latitude, longitude))
+            or {"dsmUrl": "https://solar.example/dsm"}
+        ),
+    )
+    provider_response = Mock(content=b"test-tiff")
+    provider_response.raise_for_status.return_value = None
+    monkeypatch.setattr(roof_model.requests, "get", lambda *args, **kwargs: provider_response)
+
+    response = client.get(f"/api/roof-model/{location_id}/layer/dsm")
+
+    assert response.status_code == 200
+    assert requested == [(28.61395, 77.20905)]

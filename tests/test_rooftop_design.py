@@ -237,3 +237,149 @@ def test_sqlite_schema_and_financial_estimate_are_unchanged(client, app):
             after.annual_generation,
             after.monthly_savings,
         ) == financials
+
+
+def test_invalid_authoritative_geometry_is_rejected(client, app):
+    location_id = _location(app)
+    crossed = {
+        "type": "Polygon",
+        "coordinates": [[
+            [77.2090, 28.6139],
+            [77.2092, 28.6141],
+            [77.2092, 28.6139],
+            [77.2090, 28.6141],
+            [77.2090, 28.6139],
+        ]],
+    }
+
+    response = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={"authoritative_roof_geojson": crossed},
+    )
+
+    assert response.status_code == 400
+    assert "must not self-intersect" in response.get_json()["error"]
+
+
+def test_invalid_obstruction_revision_preserves_current_design(client, app):
+    location_id = _location(app)
+    current = client.post(
+        f"/api/locations/{location_id}/rooftop-design", json=_create_payload()
+    ).get_json()
+    outside = {
+        "type": "MultiPolygon",
+        "coordinates": [[[
+            [77.20915, 28.61405],
+            [77.20925, 28.61405],
+            [77.20925, 28.61415],
+            [77.20915, 28.61415],
+            [77.20915, 28.61405],
+        ]]],
+    }
+
+    response = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={"manual_obstructions_geojson": outside},
+    )
+
+    assert response.status_code == 400
+    assert "must remain fully inside" in response.get_json()["error"]
+    with app.app_context():
+        revisions = RooftopDesign.query.filter_by(
+            user_location_id=location_id
+        ).all()
+        assert len(revisions) == 1
+        assert revisions[0].id == current["id"]
+        assert revisions[0].is_current is True
+
+
+def test_rooftop_design_allows_obstructions_that_only_touch_at_an_edge(client, app):
+    location_id = _location(app)
+    touching = {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [[
+                [77.20904, 28.61394],
+                [77.20910, 28.61394],
+                [77.20910, 28.61400],
+                [77.20904, 28.61400],
+                [77.20904, 28.61394],
+            ]],
+            [[
+                [77.20910, 28.61394],
+                [77.20916, 28.61394],
+                [77.20916, 28.61400],
+                [77.20910, 28.61400],
+                [77.20910, 28.61394],
+            ]],
+        ],
+    }
+
+    response = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={"manual_obstructions_geojson": touching},
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["authoritative"]["manual_obstructions"] == touching
+
+
+def test_geometry_change_invalidates_derived_layout_and_shade(client, app):
+    location_id = _location(app)
+    first = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={
+            "panel_layout": {"geometry_key": "old", "panels": [{"id": "p1"}]},
+            "shade_analysis": {"geometry_key": "old", "status": "available"},
+        },
+    )
+    assert first.status_code == 201
+
+    edited_roof = {
+        "type": "Polygon",
+        "coordinates": [[
+            [77.2090, 28.6139],
+            [77.2093, 28.6139],
+            [77.2093, 28.6141],
+            [77.2090, 28.6141],
+            [77.2090, 28.6139],
+        ]],
+    }
+    revised = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={"authoritative_roof_geojson": edited_roof},
+    )
+
+    assert revised.status_code == 201
+    data = revised.get_json()
+    assert data["panel_layout"] is None
+    assert data["shade_analysis"] is None
+    assert data["authoritative"]["roof_boundary"] == edited_roof
+    assert data["diagnostics"]["derived_state"] == {
+        "status": "invalidated",
+        "reason": "authoritative_geometry_changed",
+        "panel_layout_current": False,
+        "shade_analysis_current": False,
+        "estimate_recalculation_required": True,
+    }
+
+
+def test_non_geometry_revision_preserves_compatible_derived_artifacts(client, app):
+    location_id = _location(app)
+    first = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={
+            "panel_layout": {"geometry_key": "current", "panels": []},
+            "shade_analysis": {"geometry_key": "current", "status": "available"},
+        },
+    )
+    assert first.status_code == 201
+
+    revised = client.post(
+        f"/api/locations/{location_id}/rooftop-design",
+        json={"review_status": "reviewed"},
+    )
+
+    assert revised.status_code == 201
+    assert revised.get_json()["panel_layout"]["geometry_key"] == "current"
+    assert revised.get_json()["shade_analysis"]["geometry_key"] == "current"

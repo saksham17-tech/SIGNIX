@@ -329,6 +329,9 @@ def _flux_grid(location, ring, layers):
                 dirs=["N","NE","E","SE","S","SW","W","NW"]
                 shade_side=dirs[int((deg+22.5)//45)%8]
             return {
+                "schema": "google_solar_annual_flux_v1",
+                "units": "kWh_per_kW_per_year",
+                "temporal_coverage": "annual",
                 "rows": int(arr.shape[0]),
                 "cols": int(arr.shape[1]),
                 "x": [round(v,3) for v in xs],
@@ -423,7 +426,7 @@ def roof_layer(location_id, layer):
     key = _key()
     if not key:
         return jsonify(error="Google Solar API is not configured"), 503
-    lat, lng = _centroid(ring)
+    lat, lng = _selection_point(ring)
     try:
         layers = _data_layers(lat, lng)
         field = {"dsm": "dsmUrl", "rgb": "rgbUrl", "mask": "maskUrl"}[layer]

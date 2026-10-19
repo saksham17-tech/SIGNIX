@@ -62,6 +62,11 @@ def _local(points, origin):
     return [[(p[0] - origin[0]) * metres_lng, (p[1] - origin[1]) * metres_lat] for p in points]
 
 
+def _local_xz(points, origin):
+    """Project GeoJSON positions to Three.js east/+X, north/-Z metres."""
+    return [[round(east, 6), round(-north, 6)] for east, north in _local(points, origin)]
+
+
 def _metric_area(points, origin):
     return abs(_signed_area(_local(points, origin)))
 
@@ -245,7 +250,10 @@ def clip_polygon_to_authoritative(subject, authoritative):
 
 
 def _surface(surface_id, points, origin, pitch, azimuth, source, confidence,
-             parent_id=None, reference_height=None, reference_point=None):
+             parent_id=None, reference_height=None, reference_point=None,
+             geometry_kind="derived_polygon", elevation_datum=None,
+             provenance=None, limitations=None, provider_area=None,
+             provider_ground_area=None):
     projected_area = _metric_area(points, origin)
     pitch_value = float(pitch or 0)
     azimuth_value = float(azimuth or 0) % 360
@@ -258,6 +266,7 @@ def _surface(surface_id, points, origin, pitch, azimuth, source, confidence,
     )
     slope_factor = 1 / max(math.cos(math.radians(pitch_value)), .01)
     reference = reference_point or _centroid(points)
+    reference_local = _local_xz([reference], origin)[0]
     normal = [
         round(math.sin(math.radians(pitch_value)) * math.sin(math.radians(azimuth_value)), 8),
         round(math.sin(math.radians(pitch_value)) * math.cos(math.radians(azimuth_value)), 8),
@@ -267,6 +276,7 @@ def _surface(surface_id, points, origin, pitch, azimuth, source, confidence,
         "id": surface_id,
         "parent_surface_id": parent_id or surface_id,
         "polygon_geojson": {"type": "Polygon", "coordinates": [_closed(points)]},
+        "polygon_local_xz_meters": _local_xz(points, origin),
         "projected_area_sqm": round(projected_area, 2),
         "area_sqm": round(projected_area * slope_factor, 2),
         "usable_area_sqm": 0.0,
@@ -274,24 +284,53 @@ def _surface(surface_id, points, origin, pitch, azimuth, source, confidence,
         "azimuth_degrees": round(azimuth_value, 2),
         "plane_normal_enu": normal,
         "reference_point": {"longitude": reference[0], "latitude": reference[1]},
+        "reference_local_xz_meters": reference_local,
         "reference_height_meters": (
             round(float(reference_height), 3) if reference_height is not None else None
         ),
+        "elevation_units": "meters" if reference_height is not None else None,
+        "elevation_datum": elevation_datum if reference_height is not None else None,
+        "pitch_convention": "degrees_from_horizontal",
+        "azimuth_convention": "degrees_clockwise_from_geographic_north_downslope",
+        "coordinate_frame": "local_east_x_north_negative_z_meters",
+        "geometry_kind": geometry_kind,
         "source": source,
         "confidence": confidence,
+        "provenance": deepcopy(provenance) if isinstance(provenance, dict) else {
+            "source": source,
+            "confidence": confidence,
+        },
+        "limitations": list(limitations or []),
+        "provider_reported_segment_area_sqm": (
+            round(float(provider_area), 2) if provider_area is not None else None
+        ),
+        "provider_reported_segment_ground_area_sqm": (
+            round(float(provider_ground_area), 2)
+            if provider_ground_area is not None else None
+        ),
         "panel_count": None,
         "is_valid": valid,
         "validation_errors": [] if valid else ["Surface geometry or plane metadata is invalid"],
     }
 
 
+def _finite_number(value):
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
 def _fixture_surfaces(boundary, metadata, origin):
     explicit_type = (metadata or {}).get("roof_type")
-    pitch_value = (metadata or {}).get("pitch_degrees")
-    azimuth_value = (metadata or {}).get("azimuth_degrees")
-    reference_height = (metadata or {}).get("height_meters")
+    pitch_value = _finite_number((metadata or {}).get("pitch_degrees"))
+    azimuth_value = _finite_number((metadata or {}).get("azimuth_degrees"))
+    reference_height = _finite_number((metadata or {}).get("height_meters"))
+    elevation_datum = "relative_building_height"
     if reference_height is None:
-        reference_height = (metadata or {}).get("elevation_meters")
+        reference_height = _finite_number((metadata or {}).get("elevation_meters"))
+        elevation_datum = "unspecified" if reference_height is not None else None
 
     # A footprint describes plan geometry only. Never infer pitch or roof type
     # from its shape. Pitched fixture geometry is allowed only when the saved
@@ -299,23 +338,31 @@ def _fixture_surfaces(boundary, metadata, origin):
     reliable_pitched_metadata = (
         explicit_type in {"gable", "shed"}
         and pitch_value is not None
+        and 0 <= pitch_value < 89
         and azimuth_value is not None
+        and 0 <= azimuth_value <= 360
         and reference_height is not None
     )
     if explicit_type == "flat" or not reliable_pitched_metadata:
         return [_surface(
             "surface-1", boundary, origin, 0, 0,
             "prototype_fixture", "simulated", reference_height=reference_height,
+            geometry_kind="simulated_planar_surface",
+            elevation_datum=elevation_datum,
+            limitations=["Pitch and roof facets are not provider-verified"],
         )], "flat"
 
     local = _local(boundary, origin)
     roof_type = explicit_type
-    pitch = float(pitch_value)
-    azimuth = float(azimuth_value)
+    pitch = pitch_value
+    azimuth = azimuth_value
     if roof_type == "shed":
         return [_surface(
             "surface-1", boundary, origin, pitch, azimuth,
             "prototype_fixture", "simulated", reference_height=reference_height,
+            geometry_kind="simulated_planar_surface",
+            elevation_datum=elevation_datum,
+            limitations=["Pitch and roof facets are simulated from accepted metadata"],
         )], roof_type
 
     if roof_type == "gable":
@@ -344,21 +391,19 @@ def _fixture_surfaces(boundary, metadata, origin):
                 pitch, azimuths[index], "prototype_fixture", "simulated",
                 reference_height=reference_height,
                 reference_point=ridge_reference,
+                geometry_kind="simulated_planar_surface",
+                elevation_datum=elevation_datum,
+                limitations=["Facet split is mathematically derived, not provider-measured"],
             ))
         if surfaces:
             return surfaces, roof_type
     return [_surface(
         "surface-1", boundary, origin, 0, 0,
         "prototype_fixture", "simulated", reference_height=reference_height,
+        geometry_kind="simulated_planar_surface",
+        elevation_datum=elevation_datum,
+        limitations=["Pitch and roof facets are not provider-verified"],
     )], "flat"
-
-
-def _finite_number(value):
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return None
-    return result if math.isfinite(result) else None
 
 
 def _provider_surfaces(provider_payload, boundary, origin):
@@ -368,6 +413,7 @@ def _provider_surfaces(provider_payload, boundary, origin):
     segments = ((provider_payload or {}).get("roof") or {}).get("segments")
     if not isinstance(segments, list) or not segments:
         return surfaces, 1
+    seen_segment_ids = set()
     for segment in segments:
         if not isinstance(segment, dict):
             invalid_segments += 1
@@ -392,6 +438,18 @@ def _provider_surfaces(provider_payload, boundary, origin):
             and not isinstance(segment_identity, bool)
             and str(segment_identity).strip() != ""
         )
+        identity_key = str(segment_identity).strip() if valid_identity else None
+        center = segment.get("center") or {}
+        if not isinstance(center, dict):
+            center = {}
+        center_lng = _finite_number(center.get("longitude"))
+        center_lat = _finite_number(center.get("latitude"))
+        valid_center = (
+            center_lng is not None
+            and center_lat is not None
+            and -180 <= center_lng <= 180
+            and -90 <= center_lat <= 90
+        )
         if (
             len(footprint) < 3
             or not all(math.isfinite(value) for point in footprint for value in point)
@@ -399,24 +457,32 @@ def _provider_surfaces(provider_payload, boundary, origin):
             or pitch is None
             or not 0 <= pitch < 89
             or azimuth is None
+            or not 0 <= azimuth <= 360
             or (segment.get("planeHeightAtCenterMeters") is not None and height is None)
+            or (height is not None and not valid_center)
+            or identity_key in seen_segment_ids
         ):
             invalid_segments += 1
             continue
+        seen_segment_ids.add(identity_key)
         segment_fragments = 0
         for fragment_index, triangle in enumerate(triangles):
             clipped = _clip_to_convex(footprint, triangle)
             if len(clipped) < 3 or _metric_area(clipped, origin) < .02:
                 continue
             segment_id = f"provider-surface-{segment_identity}"
-            center = segment.get("center") or {}
-            if not isinstance(center, dict):
-                center = {}
-            reference_point = None
-            center_lng = _finite_number(center.get("longitude"))
-            center_lat = _finite_number(center.get("latitude"))
-            if center_lng is not None and center_lat is not None:
-                reference_point = [center_lng, center_lat]
+            reference_point = [center_lng, center_lat] if valid_center else None
+            geometry_kind = segment.get("geometryKind") or "provider_geometry_unspecified"
+            surface_provenance = deepcopy((provider_payload or {}).get("provenance") or {})
+            surface_provenance.update({
+                "provider_segment_id": segment_identity,
+                "geometry_kind": geometry_kind,
+            })
+            limitations = []
+            if geometry_kind == "axis_aligned_bounding_box":
+                limitations.append(
+                    "Surface boundary is a provider segment bounding-box approximation clipped to the authoritative roof"
+                )
             surfaces.append(_surface(
                 f"{segment_id}-fragment-{fragment_index + 1}", clipped, origin,
                 pitch, azimuth,
@@ -424,6 +490,12 @@ def _provider_surfaces(provider_payload, boundary, origin):
                 parent_id=segment_id,
                 reference_height=height,
                 reference_point=reference_point,
+                geometry_kind=geometry_kind,
+                elevation_datum=segment.get("elevationDatum") or "unspecified",
+                provenance=surface_provenance,
+                limitations=limitations,
+                provider_area=_finite_number(segment.get("areaMeters2")),
+                provider_ground_area=_finite_number(segment.get("groundAreaMeters2")),
             ))
             segment_fragments += 1
         if not segment_fragments:
@@ -431,8 +503,28 @@ def _provider_surfaces(provider_payload, boundary, origin):
     return surfaces, invalid_segments
 
 
-def _geometry_key(boundary):
-    canonical = json.dumps(_closed(boundary), separators=(",", ":"))
+def _geometry_key(boundary, surfaces, structures, provider_flux=None):
+    """Fingerprint every input that affects reconstruction or classification."""
+    contract = {
+        "boundary": _closed(boundary),
+        "surfaces": [{
+            "id": item.get("id"),
+            "parent": item.get("parent_surface_id"),
+            "polygon": item.get("polygon_geojson"),
+            "pitch": item.get("pitch_degrees"),
+            "azimuth": item.get("azimuth_degrees"),
+            "height": item.get("reference_height_meters"),
+            "datum": item.get("elevation_datum"),
+            "geometry_kind": item.get("geometry_kind"),
+        } for item in surfaces],
+        "structures": [{
+            "id": item.get("id"),
+            "footprint": item.get("footprint_geojson"),
+            "height": item.get("height_meters"),
+        } for item in structures],
+        "shade_input": provider_flux,
+    }
+    canonical = json.dumps(contract, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
 
 
@@ -451,12 +543,14 @@ def _structures(design_data, boundary, origin):
                     "id": f"{prefix}-structure-{index + 1}-{fragment_index + 1}",
                     "type": label,
                     "footprint_geojson": {"type": "Polygon", "coordinates": [_closed(clipped)]},
+                    "footprint_local_xz_meters": _local_xz(clipped, origin),
                     "height_meters": None,
                     # Visual-only conservative extrusion. The measured height
                     # remains explicitly unavailable in the public contract.
                     "render_height_meters": .35,
                     "source": source,
                     "confidence": confidence,
+                    "coordinate_frame": "local_east_x_north_negative_z_meters",
                     "is_obstruction": True,
                     "footprint_area_sqm": round(_metric_area(clipped, origin), 2),
                 })
@@ -527,13 +621,27 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
     )
     surfaces = provider_surfaces
     if surfaces and any(surface.get("is_valid") for surface in surfaces):
+        uses_bounding_boxes = any(
+            surface.get("geometry_kind") == "axis_aligned_bounding_box"
+            for surface in surfaces
+        )
         mode, status, roof_type = "provider", {
-            "label": "Location-specific rooftop data",
-            "detail": "Provider roof surfaces clipped to the user-drawn boundary",
+            "label": "Location-specific provider plane data",
+            "detail": (
+                "Provider segment bounding-box approximations clipped to the user-drawn boundary"
+                if uses_bounding_boxes else
+                "Provider plane geometry clipped to the user-drawn boundary"
+            ),
             "tone": "provider",
         }, metadata.get("roof_type") or "mixed"
     elif provider_payload is not None:
-        surfaces = [_surface("user-footprint", boundary, origin, 0, metadata.get("azimuth_degrees") or 0, "user_boundary", "authoritative")]
+        surfaces = [_surface(
+            "user-footprint", boundary, origin, 0,
+            _finite_number(metadata.get("azimuth_degrees")) or 0,
+            "user_boundary", "authoritative",
+            geometry_kind="authoritative_footprint_flat_fallback",
+            limitations=["Roof pitch, elevation, and facet geometry are unavailable"],
+        )]
         provider_status = (provider_payload or {}).get("status", "unavailable")
         invalid_provider = bool((provider_payload or {}).get("available")) or provider_status in {
             "malformed_response", "incompatible_geometry"
@@ -560,7 +668,13 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
             "tone": "prototype",
         }
     else:
-        surfaces = [_surface("user-footprint", boundary, origin, 0, metadata.get("azimuth_degrees") or 0, "user_boundary", "authoritative")]
+        surfaces = [_surface(
+            "user-footprint", boundary, origin, 0,
+            _finite_number(metadata.get("azimuth_degrees")) or 0,
+            "user_boundary", "authoritative",
+            geometry_kind="authoritative_footprint_flat_fallback",
+            limitations=["Roof pitch, elevation, and facet geometry are unavailable"],
+        )]
         mode, roof_type, status = "user_fallback", "flat", {
             "label": "Using the user-drawn roof fallback",
             "detail": "Location-specific data unavailable",
@@ -576,17 +690,30 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
         edge_setback_meters=.32,
         obstruction_setback_meters=.30,
     )
-    geometry_key = _geometry_key(boundary)
+    geometry_key = _geometry_key(
+        boundary, surfaces, structures, (provider_payload or {}).get("shade")
+    )
     shade_analysis["geometry_key"] = geometry_key
     return {
         "available": True,
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "mode": mode,
         "roof_type": roof_type,
         "status_badge": status,
         "geometry_key": geometry_key,
+        "design_revision": ({
+            "id": design_data.get("id"),
+            "number": design_data.get("revision_number"),
+        } if isinstance(design_data, dict) and design_data.get("id") is not None else None),
+        "layout_acceptance": (
+            deepcopy(design_data.get("panel_layout"))
+            if isinstance(design_data, dict) and design_data.get("panel_layout") is not None
+            else deepcopy((location.extras or {}).get("accepted_layout"))
+            if isinstance(getattr(location, "extras", None), dict) else None
+        ),
         "projection_origin": {"longitude": origin[0], "latitude": origin[1]},
         "authoritative_boundary_geojson": deepcopy(authoritative_geojson),
+        "authoritative_boundary_local_xz_meters": _local_xz(boundary, origin),
         "surfaces": surfaces,
         "structures": structures,
         "imagery": {"available": False, "source": None},
@@ -596,10 +723,13 @@ def build_reconstruction(location, design_data=None, provider_payload=None,
         "constraints": {
             "boundary_authoritative": True,
             "provider_geometry_clipped": True,
+            "coordinate_frame": "local_east_x_north_negative_z_meters",
             "panel_width_meters": 1.134,
             "panel_height_meters": 1.762,
             "edge_setback_meters": .32,
             "panel_gap_meters": .07,
+            "panel_dimensions_apply_on_roof_plane": True,
+            "saved_estimate_unchanged_by_visual_layout": True,
         },
         "diagnostics": {
             "provider_status": (provider_payload or {}).get("status", "not_requested"),

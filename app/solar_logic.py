@@ -10,6 +10,8 @@ Core solar estimation logic:
 - Financial + environmental derived figures
 """
 
+import hashlib
+import json
 import math
 import requests
 from app.assumptions import (
@@ -22,6 +24,7 @@ from app.assumptions import (
     OM_PERCENT,
     PERFORMANCE_RATIO,
     SOILING_LOSS_PCT,
+    assumptions_snapshot,
     get_value,
 )
 from app.config import Config
@@ -46,6 +49,79 @@ MONTH_NAMES = [
 # location (used to build mock/fallback irradiance profiles when live APIs
 # are unreachable). Values are kWh/m^2/day.
 MOCK_MONTHLY_PSH = [5.2, 5.8, 6.2, 6.6, 6.4, 5.0, 4.2, 4.3, 4.8, 5.3, 5.0, 4.8]
+
+CALCULATION_MODEL_VERSION = "2.0"
+PVGIS_PROFILE_KIND = "monthly_specific_yield_kwh_per_kwp"
+
+
+def calculation_assumptions():
+    """Return the complete, serializable input set that controls saved results."""
+    return {
+        "calculation_model_version": CALCULATION_MODEL_VERSION,
+        "assumptions": assumptions_snapshot(),
+        "temperature_model": {
+            "coefficient_per_celsius": -0.004,
+            "cell_temperature_rise_celsius_at_6_psh": 20.0,
+            "minimum_temperature_factor": 0.75,
+        },
+        "pvgis": {
+            "endpoint": Config.PVGIS_URL,
+            "configured_system_loss_percent": 14.0,
+            "pv_technology": "crystSi",
+            "mounting_place": "building",
+            "profile_kind": PVGIS_PROFILE_KIND,
+        },
+        "nasa_power": {
+            "endpoint": Config.NASA_POWER_URL,
+            "parameters": ["ALLSKY_SFC_SW_DWN", "T2M"],
+            "temporal_model": "monthly_climatology",
+        },
+    }
+
+
+def current_assumption_fingerprint():
+    payload = json.dumps(calculation_assumptions(), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def generation_provenance_for_result(result):
+    """Build persisted provenance without widening the established API result."""
+    source = result.get("irradiance_source")
+    pvgis = source == "pvgis"
+    surface_generation = result.get("surface_generation") or {}
+    surfaces = surface_generation.get("surfaces") or []
+    location_loss_model_used = (
+        not surfaces
+        or any(
+            surface.get("generation_model")
+            == "location_irradiance_azimuth_adjustment"
+            for surface in surfaces
+        )
+    )
+    return {
+        "source": source,
+        "profile_kind": (
+            PVGIS_PROFILE_KIND
+            if pvgis else "daily_horizontal_irradiance_kwh_per_m2"
+        ),
+        "profile_units": (
+            "kWh_per_kWp_per_month" if pvgis else "kWh_per_m2_per_day"
+        ),
+        "performance_ratio_applied": not pvgis and location_loss_model_used,
+        "performance_ratio": (
+            result.get("performance_ratio")
+            if not pvgis and location_loss_model_used else None
+        ),
+        "temperature_derating_applied": bool(
+            result.get("temperature_derating_applied") and location_loss_model_used
+        ),
+        "orientation_adjustment_applied": not pvgis and location_loss_model_used,
+        "provider_system_loss_percent": 14.0 if pvgis else None,
+        "monthly_annual_reconciled": (
+            round(sum((result.get("monthly_data") or {}).values()), 1)
+            == result.get("annual_generation")
+        ),
+    }
 
 
 def _normalize_ring(coordinates):
@@ -336,7 +412,9 @@ def fetch_irradiance_pvgis(latitude, longitude, peak_power_kw=1.0):
     Secondary source: pvlib/PVGIS. Used only if NASA POWER is unreachable.
     Falls back to mock data on any failure so the prototype always works
     offline.
-    Returns dict: {"Jan": kWh/kWp/day-equivalent monthly PSH, ...}, source
+    Returns PVGIS's modeled monthly PV energy normalized by requested DC
+    capacity: {"Jan": kWh/kWp/month, ...}, source. This is not irradiance and
+    must not receive another SIGNIX PR, temperature, or orientation derate.
     """
     try:
         import pvlib  # noqa: F401 - kept for the PVGIS schema/units it documents
@@ -359,9 +437,8 @@ def fetch_irradiance_pvgis(latitude, longitude, peak_power_kw=1.0):
         result = {}
         for row in monthly:
             month_idx = int(row["month"]) - 1
-            days_in_month = 30.44
-            psh = row["E_m"] / (peak_power_kw * days_in_month)
-            result[MONTH_NAMES[month_idx]] = round(psh, 2)
+            specific_yield = row["E_m"] / peak_power_kw
+            result[MONTH_NAMES[month_idx]] = round(specific_yield, 3)
         return result, "pvgis"
     except Exception:
         pass
@@ -386,6 +463,14 @@ def fetch_solar_data(latitude, longitude, peak_power_kw=1.0):
     confidence_tier: ``high`` | ``medium`` | ``low``
     """
     cached = get_cached_irradiance(latitude, longitude)
+    if (
+        cached is not None
+        and cached.get("source") == "pvgis"
+        and cached.get("profile_kind") != PVGIS_PROFILE_KIND
+    ):
+        # Pre-v2 cache entries contain synthetic daily PSH derived from E_m.
+        # They cannot be interpreted safely under the corrected unit contract.
+        cached = None
     if cached is not None:
         source = cached["source"]
         _, tier = classify_irradiance_source(source)
@@ -405,6 +490,8 @@ def fetch_solar_data(latitude, longitude, peak_power_kw=1.0):
                 "irradiance": irradiance,
                 "temperature": temperature,
                 "source": source,
+                "profile_kind": "daily_horizontal_irradiance_kwh_per_m2",
+                "schema_version": CALCULATION_MODEL_VERSION,
             },
             ttl_days=30,
         )
@@ -416,6 +503,12 @@ def fetch_solar_data(latitude, longitude, peak_power_kw=1.0):
         "irradiance": irradiance,
         "temperature": None,
         "source": source,
+        "profile_kind": (
+            PVGIS_PROFILE_KIND
+            if source == "pvgis"
+            else "daily_horizontal_irradiance_kwh_per_m2"
+        ),
+        "schema_version": CALCULATION_MODEL_VERSION,
     }
     if source == "mock_fallback":
         set_cached_irradiance(latitude, longitude, cached_data, ttl_hours=1)
@@ -479,6 +572,25 @@ def calculate_monthly_generation(
             )  # floor to avoid unrealistic drops
         monthly_kwh[month] = round(system_size_kw * psh * days_in_month[month] * pr, 1)
     return monthly_kwh
+
+
+def calculate_monthly_generation_from_specific_yield(
+    system_size_kw, monthly_specific_yield
+):
+    """Convert provider-modeled kWh/kWp/month to monthly system energy once."""
+    capacity = float(system_size_kw)
+    if not math.isfinite(capacity) or capacity < 0:
+        raise ValueError("system_size_kw must be finite and non-negative")
+    result = {}
+    for month in MONTH_NAMES:
+        try:
+            value = float(monthly_specific_yield[month])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"monthly specific yield is missing {month}") from exc
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"monthly specific yield for {month} must be non-negative")
+        result[month] = round(capacity * value, 1)
+    return result
 
 
 def _default_pm_surya_ghar_slabs():
@@ -861,7 +973,10 @@ def compute_system_sizing(
         }
     """
     area = max(0.0, float(usable_area_sqm or 0))
-    roof_capacity_kw = max(area_to_system_size(area), float(min_system_kw))
+    # The practical minimum is a recommendation floor, not fictitious roof
+    # capacity. A zero or undersized roof must never be reported as supporting
+    # 0.5 kWp merely because that is the normal product minimum.
+    roof_capacity_kw = area_to_system_size(area)
     mode = normalize_sizing_mode(sizing_mode, monthly_bill=monthly_bill)
 
     bill_sizing = None
@@ -2185,6 +2300,159 @@ def estimate_panel_count(system_size_kw, module_wattage=None):
         "note": f"Based on {watts:.0f} W modules — indicative count only, not a layout.",
     }
 
+
+def calculate_accepted_surface_generation(
+    accepted_surfaces,
+    irradiance_profile,
+    temperature_profile=None,
+    fallback_azimuth=180.0,
+    profile_kind="daily_horizontal_irradiance_kwh_per_m2",
+):
+    """Aggregate accepted capacity surface-by-surface without inventing POA data.
+
+    Location irradiance is adjusted with the existing azimuth factor only; tilt
+    is recorded but not modelled because the current inputs do not support a
+    defensible transposition calculation. A provider annual-flux specific yield
+    is used directly only with explicit units and complete panel coverage.
+    """
+    if not isinstance(accepted_surfaces, list) or not accepted_surfaces:
+        return None
+    monthly_total = {month: 0.0 for month in MONTH_NAMES}
+    breakdown = []
+    total_capacity = 0.0
+    total_panels = 0
+    weighted_orientation = 0.0
+    provider_direct = 0
+    for index, item in enumerate(accepted_surfaces):
+        if not isinstance(item, dict):
+            raise ValueError("accepted surface generation inputs must be objects")
+        panel_count = item.get("panel_count")
+        capacity = item.get("capacity_kw")
+        if (isinstance(panel_count, bool) or not isinstance(panel_count, int)
+                or panel_count < 1):
+            raise ValueError("accepted surface panel_count must be positive")
+        try:
+            capacity = float(capacity)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("accepted surface capacity_kw must be finite") from exc
+        if not math.isfinite(capacity) or capacity <= 0:
+            raise ValueError("accepted surface capacity_kw must be finite and positive")
+
+        pitch = item.get("pitch_degrees")
+        azimuth = item.get("azimuth_degrees")
+        try:
+            pitch = float(pitch) if pitch is not None else None
+            azimuth = float(azimuth) if azimuth is not None else None
+        except (TypeError, ValueError):
+            pitch = azimuth = None
+        orientation_usable = (
+            pitch is not None and azimuth is not None
+            and math.isfinite(pitch) and math.isfinite(azimuth)
+            and 0 < pitch < 89 and 0 <= azimuth <= 360
+        )
+        effective_azimuth = azimuth % 360 if orientation_usable else float(fallback_azimuth) % 360
+        provider_monthly_yield = profile_kind == PVGIS_PROFILE_KIND
+        factor = orientation_factor(effective_azimuth)
+        base_monthly = (
+            calculate_monthly_generation_from_specific_yield(capacity, irradiance_profile)
+            if provider_monthly_yield
+            else calculate_monthly_generation(capacity, irradiance_profile, temperature_profile)
+        )
+        shade_input = item.get("quantitative_flux") or {}
+        direct_yield = shade_input.get("specific_yield_kwh_per_kw_year")
+        direct_valid = (
+            shade_input.get("source") == "provider_annual_flux"
+            and shade_input.get("units") == "kWh_per_kW_per_year"
+            and shade_input.get("coverage_panels") == panel_count
+        )
+        try:
+            direct_yield = float(direct_yield)
+        except (TypeError, ValueError):
+            direct_valid = False
+        direct_valid = direct_valid and math.isfinite(direct_yield) and direct_yield >= 0
+        if direct_valid:
+            annual = capacity * direct_yield
+            weight_total = sum(base_monthly.values())
+            monthly = {
+                month: (annual * base_monthly[month] / weight_total if weight_total else 0.0)
+                for month in MONTH_NAMES
+            }
+            model = "provider_annual_flux_direct"
+            provider_direct += 1
+            shade_status = "provider_flux_incorporated_not_isolated"
+            applied_factor = None
+        elif provider_monthly_yield:
+            monthly = base_monthly
+            annual = sum(monthly.values())
+            model = "pvgis_monthly_specific_yield_direct"
+            shade_status = item.get("shade_status") or "unknown_not_quantified"
+            applied_factor = None
+        else:
+            monthly = {month: value * factor for month, value in base_monthly.items()}
+            annual = sum(monthly.values())
+            model = "location_irradiance_azimuth_adjustment"
+            shade_status = item.get("shade_status") or "unknown_not_quantified"
+            applied_factor = factor
+            weighted_orientation += capacity * factor
+        rounded_monthly = {month: round(value, 1) for month, value in monthly.items()}
+        annual = round(sum(rounded_monthly.values()), 1)
+        for month in MONTH_NAMES:
+            monthly_total[month] += rounded_monthly[month]
+        total_capacity += capacity
+        total_panels += panel_count
+        breakdown.append({
+            "surface_id": item.get("surface_id") or f"surface-{index + 1}",
+            "panel_count": panel_count,
+            "capacity_kw": round(capacity, 6),
+            "pitch_degrees": pitch,
+            "azimuth_degrees": azimuth,
+            "effective_azimuth_degrees": effective_azimuth if not direct_valid else None,
+            "orientation_source": (
+                "provider_model_not_separately_adjusted"
+                if provider_monthly_yield and not direct_valid
+                else ("surface_metadata" if orientation_usable else "global_fallback")
+            ),
+            "orientation_factor": applied_factor,
+            "tilt_model": (
+                "provider_model_not_separately_adjusted"
+                if provider_monthly_yield and not direct_valid
+                else "not_applied_no_plane_of_array_irradiance"
+            ),
+            "shade_status": shade_status,
+            "shade_loss_percent": None,
+            "generation_model": model,
+            "monthly_generation_kwh": rounded_monthly,
+            "annual_generation_kwh": annual,
+            "quantitative_flux": shade_input if direct_valid else None,
+        })
+    monthly_total = {month: round(value, 1) for month, value in monthly_total.items()}
+    return {
+        "schema_version": "1.0",
+        "model": "mixed" if 0 < provider_direct < len(breakdown) else (
+            "provider_annual_flux_direct" if provider_direct == len(breakdown)
+            else (
+                "pvgis_monthly_specific_yield_direct"
+                if profile_kind == PVGIS_PROFILE_KIND
+                else "location_irradiance_azimuth_adjustment"
+            )
+        ),
+        "surface_count": len(breakdown),
+        "panel_count": total_panels,
+        "capacity_kw": round(total_capacity, 6),
+        "monthly_generation_kwh": monthly_total,
+        "annual_generation_kwh": round(sum(monthly_total.values()), 1),
+        "weighted_orientation_factor": (
+            round(weighted_orientation / total_capacity, 3)
+            if total_capacity and provider_direct == 0 and profile_kind != PVGIS_PROFILE_KIND else None
+        ),
+        "surfaces": breakdown,
+        "limitations": [
+            "Tilt is recorded but not transposed because plane-of-array irradiance is unavailable.",
+            "Qualitative shaded/unknown classifications are not converted to numeric shade losses.",
+            "Provider annual flux is a combined production input; its shade component is not isolated as a percentage.",
+        ],
+    }
+
 def run_full_estimation(
     latitude,
     longitude,
@@ -2205,6 +2473,9 @@ def run_full_estimation(
     load_profile="flat",
     net_metering_mode="full_offset",
     feed_in_tariff=None,
+    accepted_panel_count=None,
+    accepted_module_wattage=None,
+    accepted_surfaces=None,
 ):
     """End-to-end estimation pipeline used by the /api/estimate route.
 
@@ -2245,6 +2516,24 @@ def run_full_estimation(
     system_size_kw = sizing["recommended_kw"]
     bill_sizing = sizing.get("bill_sizing")
     sizing_method = sizing["mode"]
+    if accepted_panel_count is not None:
+        if isinstance(accepted_panel_count, bool) or int(accepted_panel_count) != accepted_panel_count or accepted_panel_count < 1:
+            raise ValueError("accepted_panel_count must be a positive whole number")
+        module_wattage = float(
+            accepted_module_wattage
+            if accepted_module_wattage is not None
+            else get_value("module_wattage", MODULE_WATTAGE.value)
+        )
+        if not math.isfinite(module_wattage) or module_wattage <= 0:
+            raise ValueError("accepted_module_wattage must be positive")
+        system_size_kw = round(int(accepted_panel_count) * module_wattage / 1000, 6)
+        sizing_method = "accepted_layout"
+        sizing = {
+            **sizing,
+            "mode": sizing_method,
+            "recommended_kw": system_size_kw,
+            "rationale": "Capacity derived from a server-validated accepted panel layout.",
+        }
 
     # Auto-size battery when backup is requested but no explicit kWh was sent.
     battery_sizing = None
@@ -2287,6 +2576,11 @@ def run_full_estimation(
     )
     # Normalize for API/UI while keeping pipeline source for cache keys / logs.
     normalized_source, confidence_tier = classify_irradiance_source(source)
+    profile_kind = (
+        PVGIS_PROFILE_KIND
+        if source == "pvgis"
+        else "daily_horizontal_irradiance_kwh_per_m2"
+    )
     irradiance_elapsed = (time.perf_counter() - irradiance_start) * 1000
     print(
         f"[TIMING] run_full_estimation irradiance fetch elapsed: {irradiance_elapsed:.2f} ms "
@@ -2294,19 +2588,48 @@ def run_full_estimation(
     )
 
     generation_start = time.perf_counter()
-    monthly_generation = calculate_monthly_generation(
-        system_size_kw, irradiance_profile, temperature_profile
-    )
+    surface_generation = calculate_accepted_surface_generation(
+        accepted_surfaces,
+        irradiance_profile,
+        temperature_profile,
+        az,
+        profile_kind=profile_kind,
+    ) if accepted_surfaces else None
+    if surface_generation:
+        if surface_generation["panel_count"] != int(accepted_panel_count or 0):
+            raise ValueError("accepted surface panel totals do not match the accepted layout")
+        if abs(surface_generation["capacity_kw"] - system_size_kw) > 1e-6:
+            raise ValueError("accepted surface capacity does not match the accepted layout")
+        monthly_generation = surface_generation["monthly_generation_kwh"]
+    else:
+        monthly_generation = (
+            calculate_monthly_generation_from_specific_yield(
+                system_size_kw, irradiance_profile
+            )
+            if profile_kind == PVGIS_PROFILE_KIND
+            else calculate_monthly_generation(
+                system_size_kw, irradiance_profile, temperature_profile
+            )
+        )
     generation_elapsed = (time.perf_counter() - generation_start) * 1000
     print(
         f"[TIMING] run_full_estimation monthly generation calc elapsed: {generation_elapsed:.2f} ms"
     )
 
     # Apply orientation derating
-    monthly_generation = {
-        m: round(v * orient_factor, 1) for m, v in monthly_generation.items()
-    }
+    if not surface_generation and profile_kind != PVGIS_PROFILE_KIND:
+        monthly_generation = {
+            m: round(v * orient_factor, 1) for m, v in monthly_generation.items()
+        }
     annual_generation = round(sum(monthly_generation.values()), 1)
+    location_loss_model_used = (
+        not surface_generation
+        or any(
+            surface.get("generation_model")
+            == "location_irradiance_azimuth_adjustment"
+            for surface in surface_generation.get("surfaces", [])
+        )
+    )
 
     # Also expose rule-of-thumb generation (135 units/kW/month) for comparison
     thumb_monthly = round(
@@ -2337,8 +2660,12 @@ def run_full_estimation(
         "usable_area_sqm": round(usable_area_sqm, 2),
         "roof_capacity_kw": roof_capacity_kw,
         "system_size": system_size_kw,
-        "panel_count": (estimate_panel_count(system_size_kw) or {}).get("panel_count"),
-        "panel_estimate": estimate_panel_count(system_size_kw),
+        "panel_count": int(accepted_panel_count) if accepted_panel_count is not None else (estimate_panel_count(system_size_kw) or {}).get("panel_count"),
+        "panel_estimate": ({
+            "panel_count": int(accepted_panel_count),
+            "module_wattage_w": round(module_wattage, 0),
+            "note": "Exact count from the server-validated accepted layout.",
+        } if accepted_panel_count is not None else estimate_panel_count(system_size_kw)),
         "sizing_method": sizing_method,
         "sizing": {
             "mode": sizing["mode"],
@@ -2355,7 +2682,11 @@ def run_full_estimation(
         # Public source tags: nasa_power | pvgis | mock (mock_fallback normalized)
         "irradiance_source": normalized_source,
         "irradiance_confidence": confidence_tier,  # high | medium | low
-        "temperature_derating_applied": temperature_profile is not None,
+        "temperature_derating_applied": (
+            temperature_profile is not None
+            and profile_kind != PVGIS_PROFILE_KIND
+            and location_loss_model_used
+        ),
         "orientation_deg": az,
         "orientation_label": az_label,
         "orientation_factor": orient_factor,
@@ -2377,6 +2708,16 @@ def run_full_estimation(
         "dc_note": "System size is DC kWp. AC output depends on PR, irradiance and grid availability.",
         **financials,
     }
+    if profile_kind == PVGIS_PROFILE_KIND:
+        result["orientation_factor"] = None
+        result["orientation_source"] = "provider_model_not_separately_adjusted"
+    if surface_generation:
+        result["surface_generation"] = surface_generation
+        result["generation_model"] = surface_generation["model"]
+        result["orientation_factor"] = surface_generation.get("weighted_orientation_factor")
+        result["orientation_source"] = "accepted_surface_metadata"
+        if profile_kind == PVGIS_PROFILE_KIND:
+            result["orientation_source"] = "provider_model_not_separately_adjusted"
     result["suitability_rating"] = calculate_suitability_rating(
         result, user_priority=user_priority or "no_preference"
     )

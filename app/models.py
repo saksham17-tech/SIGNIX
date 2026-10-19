@@ -118,6 +118,7 @@ class UserLocation(db.Model):
 
     def to_dict(self):
         from app.geo import canonicalize_stored_ring
+        from app.solar_logic import current_assumption_fingerprint
 
         polygon_geojson = self.polygon_geojson
         if isinstance(polygon_geojson, dict):
@@ -146,6 +147,19 @@ class UserLocation(db.Model):
                 ]
                 for polygon in (obstructions_geojson.get("coordinates") or [])
             ]
+        extras = dict(self.extras) if isinstance(self.extras, dict) else {}
+        saved_fingerprint = extras.get("assumption_fingerprint")
+        current_fingerprint = current_assumption_fingerprint()
+        if not saved_fingerprint:
+            calculation_status = "legacy_unversioned"
+        elif saved_fingerprint != current_fingerprint:
+            calculation_status = "stale_assumptions"
+            if extras.get("surface_generation"):
+                extras["surface_generation_status"] = "stale"
+        else:
+            calculation_status = "current"
+        extras["calculation_status"] = calculation_status
+
         return {
             "id": self.id,
             "user_id": self.user_id,
@@ -199,7 +213,8 @@ class UserLocation(db.Model):
             "self_consumption_frac": self.self_consumption_frac,
             "payback_years": self.payback_years,
             "suitability_rating": self.suitability_rating,
-            "extras": self.extras,
+            "calculation_status": calculation_status,
+            "extras": extras,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

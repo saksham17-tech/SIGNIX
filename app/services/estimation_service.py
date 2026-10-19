@@ -1,23 +1,44 @@
+import math
 import time
 import uuid
 
 from app.config import Config
 from app.geo import (
+    GeometryValidationError,
     canonicalize_stored_ring,
     geojson_ring_to_latlng,
     leaflet_ring_to_geojson,
+    ring_strictly_contains,
+    rings_have_positive_area_overlap,
+    validate_leaflet_ring,
 )
 from app.models import db, TariffTable, UserLocation
-from app.solar_logic import run_full_estimation
+from app.solar_logic import (
+    calculation_assumptions,
+    current_assumption_fingerprint,
+    generation_provenance_for_result,
+    run_full_estimation,
+)
 
 
-def _optional_float(value):
-    if value is None or value == "":
+def _finite_float(value, field_name, *, required=False, minimum=None, maximum=None):
+    if value in (None, ""):
+        if required:
+            raise InvalidEstimateInputError(f"{field_name} is required")
         return None
+    if isinstance(value, bool):
+        raise InvalidEstimateInputError(f"{field_name} must be a finite number")
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise InvalidEstimateInputError(f"{field_name} must be a finite number") from exc
+    if not math.isfinite(number):
+        raise InvalidEstimateInputError(f"{field_name} must be a finite number")
+    if minimum is not None and number < minimum:
+        raise InvalidEstimateInputError(f"{field_name} must be at least {minimum:g}")
+    if maximum is not None and number > maximum:
+        raise InvalidEstimateInputError(f"{field_name} must be at most {maximum:g}")
+    return number
 
 
 
@@ -79,61 +100,110 @@ def lookup_tariff_defaults(state):
     return defaults
 
 
+def _validate_estimate_geometry(polygon, obstructions=None):
+    try:
+        polygon = validate_leaflet_ring(polygon)
+    except GeometryValidationError as exc:
+        raise InvalidEstimateInputError(f"Invalid rooftop polygon: {exc}") from exc
+
+    if obstructions is None:
+        obstructions = []
+    if not isinstance(obstructions, list):
+        raise InvalidEstimateInputError("obstructions must be an array of polygons")
+    validated_obstructions = []
+    for index, obstruction in enumerate(obstructions):
+        try:
+            validated = validate_leaflet_ring(obstruction)
+        except GeometryValidationError as exc:
+            raise InvalidEstimateInputError(
+                f"Invalid obstruction polygon at index {index}: {exc}"
+            ) from exc
+        if not ring_strictly_contains(polygon, validated):
+            raise InvalidEstimateInputError(
+                f"Obstruction polygon at index {index} must remain fully inside the rooftop polygon"
+            )
+        if any(
+            rings_have_positive_area_overlap(validated, existing)
+            for existing in validated_obstructions
+        ):
+            raise InvalidEstimateInputError("Obstruction polygons must not overlap")
+        validated_obstructions.append(validated)
+    return polygon, validated_obstructions
+
+
 def prepare_estimate_inputs(payload):
-    payload = payload or {}
-    latitude = payload.get("latitude")
-    longitude = payload.get("longitude")
+    if not isinstance(payload, dict):
+        raise InvalidEstimateInputError("Request body must be a JSON object")
+    latitude = _finite_float(
+        payload.get("latitude"), "latitude", required=True, minimum=-90, maximum=90
+    )
+    longitude = _finite_float(
+        payload.get("longitude"), "longitude", required=True, minimum=-180, maximum=180
+    )
     polygon = payload.get("polygon", [])
 
-    if latitude is None or longitude is None:
-        raise InvalidEstimateInputError("latitude and longitude are required")
     if not polygon or len(polygon) < 3:
         raise InvalidEstimateInputError(
             "A rooftop polygon with at least 3 points is required"
         )
+    polygon, validated_obstructions = _validate_estimate_geometry(
+        polygon, payload.get("obstructions", [])
+    )
 
-    battery_kwh = float(payload.get("battery_kwh") or 0)
-    monthly_bill = payload.get("monthly_bill")
-    if monthly_bill is not None and monthly_bill != "":
-        try:
-            monthly_bill = float(monthly_bill)
-        except (TypeError, ValueError):
-            monthly_bill = None
-    else:
-        monthly_bill = None
+    battery_kwh = _finite_float(
+        payload.get("battery_kwh", 0), "battery_kwh", minimum=0
+    )
+    monthly_bill = _finite_float(
+        payload.get("monthly_bill"), "monthly_bill", minimum=0
+    )
 
     state_defaults = lookup_tariff_defaults(payload.get("state"))
     tariff = state_defaults["rate_per_kwh"]
     if payload.get("tariff_per_kwh") not in (None, ""):
-        try:
-            tariff = float(payload["tariff_per_kwh"])
-        except (TypeError, ValueError):
-            pass
+        tariff = _finite_float(
+            payload["tariff_per_kwh"], "tariff_per_kwh", minimum=0
+        )
 
     # Net-metering: explicit payload wins; else state default
     net_mode = payload.get("net_metering_mode") or state_defaults["net_metering_mode"]
-    feed_in = _optional_float(payload.get("feed_in_tariff"))
+    feed_in = _finite_float(
+        payload.get("feed_in_tariff"), "feed_in_tariff", minimum=0
+    )
     if feed_in is None:
         feed_in = state_defaults.get("export_credit_rate")
+
+    needs_backup = payload.get("needs_backup", False)
+    if not isinstance(needs_backup, bool):
+        raise InvalidEstimateInputError("needs_backup must be a boolean")
+
+    orientation = payload.get("orientation", "auto")
+    if str(orientation).strip().lower() not in {"", "auto", "none"}:
+        orientation = _finite_float(
+            orientation, "orientation", minimum=0, maximum=360
+        )
 
     return {
         "address": payload.get("address", "Unknown address"),
         "latitude": latitude,
         "longitude": longitude,
         "polygon": polygon,
-        "obstructions": payload.get("obstructions", []),
+        "obstructions": validated_obstructions,
         "tariff_per_kwh": tariff,
-        "orientation": payload.get("orientation", "auto"),
+        "orientation": orientation,
         "battery_kwh": battery_kwh,
         "monthly_bill": monthly_bill,
         "property_type": payload.get("property_type") or "residential",
         "user_priority": payload.get("user_priority") or "no_preference",
-        "needs_backup": bool(payload.get("needs_backup")),
+        "needs_backup": needs_backup,
         "inverter_preference": payload.get("inverter_preference") or "auto",
         "sizing_mode": payload.get("sizing_mode"),
-        "budget_inr": _optional_float(payload.get("budget_inr")),
-        "critical_load_kw": _optional_float(payload.get("critical_load_kw")),
-        "backup_hours": _optional_float(payload.get("backup_hours")),
+        "budget_inr": _finite_float(payload.get("budget_inr"), "budget_inr", minimum=0),
+        "critical_load_kw": _finite_float(
+            payload.get("critical_load_kw"), "critical_load_kw", minimum=0
+        ),
+        "backup_hours": _finite_float(
+            payload.get("backup_hours"), "backup_hours", minimum=0
+        ),
         "load_profile": payload.get("load_profile") or "flat",
         "net_metering_mode": net_mode or "full_offset",
         "feed_in_tariff": feed_in,
@@ -168,6 +238,7 @@ def create_estimate(
     parent_location_id=None,
     scenario_label=None,
 ):
+    polygon, obstructions = _validate_estimate_geometry(polygon, obstructions)
     total_start = time.perf_counter()
     try:
         result = run_full_estimation(
@@ -299,6 +370,12 @@ def create_estimate(
                 "sensitivity": result.get("sensitivity"),
                 "panel_count": result.get("panel_count"),
                 "panel_estimate": result.get("panel_estimate"),
+                "generation_model": result.get("generation_model"),
+                "generation_provenance": generation_provenance_for_result(result),
+                "calculation_assumptions": calculation_assumptions(),
+                "assumption_fingerprint": current_assumption_fingerprint(),
+                "surface_generation": result.get("surface_generation"),
+                "surface_generation_status": "current" if result.get("surface_generation") else None,
             },
         )
 
@@ -329,11 +406,13 @@ def _estimate_inputs_from_location(location):
     polygon = _polygon_from_location(location)
     if not polygon:
         raise InvalidEstimateInputError("Saved estimate has no rooftop polygon")
-    return {
+    obstructions = _obstructions_from_location(location)
+    polygon, obstructions = _validate_estimate_geometry(polygon, obstructions)
+    inputs = {
         "latitude": location.latitude,
         "longitude": location.longitude,
         "coordinates": polygon,
-        "obstructions": _obstructions_from_location(location),
+        "obstructions": obstructions,
         "tariff_per_kwh": extras.get("tariff_per_kwh") or Config.DEFAULT_TARIFF,
         "battery_kwh": float(location.battery_kwh or 0),
         "monthly_bill": extras.get("monthly_bill"),
@@ -349,6 +428,13 @@ def _estimate_inputs_from_location(location):
         "net_metering_mode": extras.get("net_metering_mode") or "full_offset",
         "feed_in_tariff": extras.get("feed_in_tariff"),
     }
+    accepted_layout = extras.get("accepted_layout")
+    if isinstance(accepted_layout, dict) and accepted_layout.get("status") == "accepted":
+        module = accepted_layout.get("module") or {}
+        inputs["accepted_panel_count"] = accepted_layout.get("panel_count")
+        inputs["accepted_module_wattage"] = module.get("wattage_w")
+        inputs["accepted_surfaces"] = accepted_layout.get("surface_generation_inputs")
+    return inputs
 
 
 def preview_orientation(location, orientation_deg):
@@ -374,6 +460,13 @@ def preview_orientation(location, orientation_deg):
 def apply_orientation(location, orientation_deg):
     """Persist a new orientation on an existing estimate and refresh its cached outputs."""
     result = preview_orientation(location, orientation_deg)
+    _apply_result_to_location(location, result)
+    db.session.commit()
+    return result
+
+
+def _apply_result_to_location(location, result, extra_updates=None):
+    """Apply one authoritative engine result without committing the transaction."""
     extras = dict(location.extras) if isinstance(location.extras, dict) else {}
 
     location.system_size = result["system_size"]
@@ -435,10 +528,46 @@ def apply_orientation(location, orientation_deg):
         "sensitivity": result.get("sensitivity"),
         "panel_count": result.get("panel_count"),
         "panel_estimate": result.get("panel_estimate"),
+        "generation_model": result.get("generation_model"),
+        "generation_provenance": generation_provenance_for_result(result),
+        "calculation_assumptions": calculation_assumptions(),
+        "assumption_fingerprint": current_assumption_fingerprint(),
+        "surface_generation": result.get("surface_generation"),
+        "surface_generation_status": "current" if result.get("surface_generation") else None,
     })
+    if extra_updates:
+        extras.update(extra_updates)
     location.extras = extras
     db.session.add(location)
-    db.session.commit()
+
+
+def recalculate_for_accepted_layout(
+    location, panel_count, module_wattage, metadata, surface_generation_inputs=None
+):
+    """Run the established engine at validated layout capacity; caller commits."""
+    inputs = _estimate_inputs_from_location(location)
+    inputs["orientation"] = (
+        location.orientation_deg
+        if location.orientation_deg is not None
+        else (location.extras or {}).get("orientation_input", "auto")
+    )
+    inputs["accepted_panel_count"] = panel_count
+    inputs["accepted_module_wattage"] = module_wattage
+    inputs["accepted_surfaces"] = surface_generation_inputs
+    try:
+        result = run_full_estimation(**inputs)
+    except Exception as exc:
+        raise EstimationEngineError(str(exc)) from exc
+    if isinstance(result.get("surface_generation"), dict):
+        result["surface_generation"].update({
+            "status": "current",
+            "geometry_key": metadata.get("geometry_key"),
+            "accepted_design_revision_id": metadata.get("accepted_design_revision_id"),
+            "accepted_design_revision_number": metadata.get("accepted_design_revision_number"),
+            "irradiance_source": result.get("irradiance_source"),
+            "irradiance_confidence": result.get("irradiance_confidence"),
+        })
+    _apply_result_to_location(location, result, {"accepted_layout": metadata})
     return result
 
 def _default_scenario_label(sizing_mode, has_battery):
@@ -497,6 +626,7 @@ def clone_estimate_with_change(user_id, source_location_id, change, value, scena
     extras = source.extras if isinstance(source.extras, dict) else {}
     polygon = _polygon_from_location(source)
     obstructions = _obstructions_from_location(source)
+    polygon, obstructions = _validate_estimate_geometry(polygon, obstructions)
 
     monthly_bill = extras.get("monthly_bill")
     tariff = extras.get("tariff_per_kwh") or Config.DEFAULT_TARIFF

@@ -152,6 +152,24 @@ def test_missing_elevation_stays_unavailable_and_flat_plane_stays_flat():
     assert surface["plane_normal_enu"] == [0.0, 0.0, 1.0]
 
 
+@pytest.mark.parametrize("pitch", ["not-a-number", float("nan"), 90])
+def test_invalid_prototype_plane_metadata_degrades_to_explicit_flat_fallback(pitch):
+    design = {"authoritative": {
+        "roof_boundary": DELHI_ROOF,
+        "roof_metadata": {
+            "roof_type": "shed", "pitch_degrees": pitch,
+            "azimuth_degrees": 180, "height_meters": 8,
+        },
+    }}
+
+    model = reconstruction.build_reconstruction(_location(), design)
+
+    assert model["mode"] == "prototype_fixture"
+    assert model["roof_type"] == "flat"
+    assert model["surfaces"][0]["pitch_degrees"] == 0
+    assert model["surfaces"][0]["geometry_kind"] == "simulated_planar_surface"
+
+
 def test_pitch_and_clockwise_azimuth_produce_expected_plane_normal():
     design = {"authoritative": {
         "roof_boundary": DELHI_ROOF,
@@ -234,6 +252,11 @@ def test_provider_surfaces_and_manual_structures_are_clipped_to_authoritative_bo
             "pitchDegrees": 19,
             "azimuthDegrees": 172,
             "planeHeightAtCenterMeters": 7.8,
+            "center": {"longitude": 77.20905, "latitude": 28.61395},
+            "geometryKind": "axis_aligned_bounding_box",
+            "elevationDatum": "mean_sea_level",
+            "areaMeters2": 52.4,
+            "groundAreaMeters2": 49.6,
             "footprint": [
                 [77.20890, 28.61385], [77.20920, 28.61385],
                 [77.20920, 28.61405], [77.20890, 28.61405],
@@ -261,6 +284,10 @@ def test_provider_surfaces_and_manual_structures_are_clipped_to_authoritative_bo
         assert item["azimuth_degrees"] == 172
         assert item["parent_surface_id"] == "provider-surface-4"
         assert item["reference_height_meters"] == 7.8
+        assert item["elevation_datum"] == "mean_sea_level"
+        assert item["geometry_kind"] == "axis_aligned_bounding_box"
+        assert item["provider_reported_segment_area_sqm"] == 52.4
+        assert "bounding-box approximation" in item["limitations"][0]
         for point in item["polygon_geojson"]["coordinates"][0][:-1]:
             assert _inside_or_on(point, boundary)
     for item in model["structures"]:
@@ -298,6 +325,99 @@ def test_shade_grid_is_bound_to_the_reconstructed_authoritative_geometry():
     assert first["geometry_key"] == first["shade_analysis"]["geometry_key"]
     assert second["geometry_key"] == second["shade_analysis"]["geometry_key"]
     assert first["geometry_key"] != second["geometry_key"]
+
+
+def test_geometry_key_changes_with_plane_obstruction_and_shade_inputs():
+    flat = reconstruction.build_reconstruction(_location())
+    pitched_design = {"authoritative": {
+        "roof_boundary": DELHI_ROOF,
+        "roof_metadata": {
+            "roof_type": "shed", "pitch_degrees": 18,
+            "azimuth_degrees": 180, "height_meters": 8,
+        },
+    }}
+    pitched = reconstruction.build_reconstruction(_location(), pitched_design)
+    obstructed_design = {"authoritative": {
+        "roof_boundary": DELHI_ROOF,
+        "manual_obstructions": {"type": "MultiPolygon", "coordinates": [[[
+            [77.20904, 28.61393], [77.20907, 28.61393],
+            [77.20907, 28.61396], [77.20904, 28.61396],
+            [77.20904, 28.61393],
+        ]]]},
+        "roof_metadata": {},
+    }}
+    obstructed = reconstruction.build_reconstruction(_location(), obstructed_design)
+    shade_provider = {
+        "available": False,
+        "status": "not_found",
+        "shade": {
+            "rows": 1, "cols": 1, "x": [0], "z": [0],
+            "relativeFlux": [.9], "threshold": .65,
+        },
+    }
+    shaded = reconstruction.build_reconstruction(
+        _location(), provider_payload=shade_provider, prototype_fixture=False
+    )
+    unshaded = reconstruction.build_reconstruction(
+        _location(),
+        provider_payload={"available": False, "status": "not_found"},
+        prototype_fixture=False,
+    )
+
+    assert len({
+        flat["geometry_key"], pitched["geometry_key"],
+        obstructed["geometry_key"], shaded["geometry_key"],
+        unshaded["geometry_key"],
+    }) == 5
+    assert shaded["geometry_key"] != unshaded["geometry_key"]
+    for model in (flat, pitched, obstructed, shaded, unshaded):
+        assert model["shade_analysis"]["geometry_key"] == model["geometry_key"]
+
+
+def test_backend_projection_contract_uses_east_x_and_north_negative_z():
+    model = reconstruction.build_reconstruction(_location())
+    geographic = model["authoritative_boundary_geojson"]["coordinates"][0][:-1]
+    local = model["authoritative_boundary_local_xz_meters"]
+    west = min(range(len(geographic)), key=lambda index: geographic[index][0])
+    east = max(range(len(geographic)), key=lambda index: geographic[index][0])
+    south = min(range(len(geographic)), key=lambda index: geographic[index][1])
+    north = max(range(len(geographic)), key=lambda index: geographic[index][1])
+
+    assert local[east][0] > local[west][0]
+    assert local[north][1] < local[south][1]
+    assert model["surfaces"][0]["polygon_local_xz_meters"] == local
+    assert model["constraints"]["coordinate_frame"] == "local_east_x_north_negative_z_meters"
+
+
+@pytest.mark.parametrize("defect", ["missing_center", "duplicate_id"])
+def test_provider_plane_identity_and_height_reference_must_be_defensible(defect):
+    segment = {
+        "segmentIndex": 3,
+        "pitchDegrees": 12,
+        "azimuthDegrees": 170,
+        "planeHeightAtCenterMeters": 8.1,
+        "center": {"longitude": 77.20907, "latitude": 28.61395},
+        "geometryKind": "axis_aligned_bounding_box",
+        "footprint": DELHI_ROOF["coordinates"][0][:-1],
+    }
+    segments = [segment]
+    if defect == "missing_center":
+        segment.pop("center")
+    else:
+        segments.append(dict(segment))
+    provider = {"available": True, "status": "available", "roof": {"segments": segments}}
+
+    model = reconstruction.build_reconstruction(_location(), provider_payload=provider)
+
+    if defect == "missing_center":
+        assert model["mode"] == "user_fallback"
+        assert model["diagnostics"]["invalid_provider_segments"] == 1
+    else:
+        assert model["mode"] == "provider"
+        assert model["diagnostics"]["invalid_provider_segments"] == 1
+        assert {surface["parent_surface_id"] for surface in model["surfaces"]} == {
+            "provider-surface-3"
+        }
 
 
 def test_failed_real_provider_does_not_masquerade_as_prototype_data():

@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime
+import math
 
 from sqlalchemy import func
 
-from app.geo import canonicalize_stored_ring
+from app.geo import (
+    GeometryValidationError,
+    ring_strictly_contains,
+    rings_have_positive_area_overlap,
+    validate_geojson_ring,
+)
 from app.models import RooftopDesign, RooftopDesignSource, UserLocation, db
 
 
@@ -57,18 +63,16 @@ def _canonical_polygon(value, field_name, required=False):
     rings = value.get("coordinates")
     if not isinstance(rings, list) or not rings:
         raise RooftopDesignInputError(f"{field_name} must contain a polygon ring")
+    if len(rings) != 1:
+        raise RooftopDesignInputError(
+            f"{field_name} must contain one outer ring; interior holes are not supported"
+        )
     normalized = []
     for ring in rings:
-        canonical = canonicalize_stored_ring(ring)
-        if len(canonical) < 4:
-            raise RooftopDesignInputError(
-                f"{field_name} rings must contain at least three positions"
-            )
-        for lng, lat in canonical:
-            if not (-180 <= lng <= 180 and -90 <= lat <= 90):
-                raise RooftopDesignInputError(
-                    f"{field_name} contains coordinates outside WGS84 bounds"
-                )
+        try:
+            canonical = validate_geojson_ring(ring)
+        except GeometryValidationError as exc:
+            raise RooftopDesignInputError(f"{field_name}: {exc}") from exc
         normalized.append(canonical)
     return {"type": "Polygon", "coordinates": normalized}
 
@@ -90,6 +94,25 @@ def _canonical_multipolygon(value, field_name):
     return {"type": "MultiPolygon", "coordinates": normalized}
 
 
+def _validate_obstructions(boundary, collections):
+    roof_ring = boundary["coordinates"][0]
+    validated = []
+    for field_name, collection in collections:
+        for index, polygon in enumerate((collection or {}).get("coordinates") or []):
+            ring = polygon[0]
+            if not ring_strictly_contains(roof_ring, ring):
+                raise RooftopDesignInputError(
+                    f"{field_name} polygon at index {index} must remain fully inside "
+                    "the authoritative rooftop polygon"
+                )
+            if any(
+                rings_have_positive_area_overlap(ring, existing)
+                for existing in validated
+            ):
+                raise RooftopDesignInputError("Rooftop obstruction polygons must not overlap")
+            validated.append(ring)
+
+
 def _optional_number(value, field_name, minimum=None, maximum=None):
     if value is None:
         return None
@@ -97,6 +120,8 @@ def _optional_number(value, field_name, minimum=None, maximum=None):
         number = float(value)
     except (TypeError, ValueError) as exc:
         raise RooftopDesignInputError(f"{field_name} must be numeric") from exc
+    if not math.isfinite(number):
+        raise RooftopDesignInputError(f"{field_name} must be finite")
     if minimum is not None and number < minimum:
         raise RooftopDesignInputError(f"{field_name} must be at least {minimum}")
     if maximum is not None and number > maximum:
@@ -203,7 +228,7 @@ def _design_snapshot(design):
     }
 
 
-def create_revision(location_id, user_id, payload=None, base_design=None):
+def create_revision(location_id, user_id, payload=None, base_design=None, *, commit=True):
     location = get_owned_location(location_id, user_id)
     if location is None:
         return None
@@ -255,6 +280,84 @@ def create_revision(location_id, user_id, payload=None, base_design=None):
         if roof_type not in ROOF_TYPES:
             raise RooftopDesignInputError("Invalid roof_type")
 
+    accepted_roof_planes = deepcopy(
+        payload.get("accepted_roof_planes", state.get("accepted_roof_planes"))
+    )
+    accepted_obstructions = _canonical_multipolygon(
+        payload.get(
+            "accepted_obstructions_geojson",
+            state.get("accepted_obstructions_geojson"),
+        ),
+        "accepted_obstructions_geojson",
+    )
+    _validate_obstructions(boundary, (
+        ("manual_obstructions_geojson", manual_obstructions),
+        ("accepted_obstructions_geojson", accepted_obstructions),
+    ))
+    pitch_degrees = _optional_number(
+        roof_metadata.get("pitch_degrees", state.get("pitch_degrees")),
+        "pitch_degrees",
+        0,
+        90,
+    )
+    azimuth_degrees = _optional_number(
+        roof_metadata.get("azimuth_degrees", state.get("azimuth_degrees")),
+        "azimuth_degrees",
+        0,
+        360,
+    )
+    elevation_meters = _optional_number(
+        roof_metadata.get("elevation_meters", state.get("elevation_meters")),
+        "elevation_meters",
+    )
+    height_meters = _optional_number(
+        roof_metadata.get("height_meters", state.get("height_meters")),
+        "height_meters",
+        0,
+    )
+    geometry_changed = bool(base_design) and any((
+        boundary != state.get("authoritative_roof_geojson"),
+        manual_obstructions != state.get("manual_obstructions_geojson"),
+        accepted_roof_planes != state.get("accepted_roof_planes"),
+        accepted_obstructions != state.get("accepted_obstructions_geojson"),
+        roof_type != state.get("roof_type"),
+        pitch_degrees != state.get("pitch_degrees"),
+        azimuth_degrees != state.get("azimuth_degrees"),
+        elevation_meters != state.get("elevation_meters"),
+        height_meters != state.get("height_meters"),
+    ))
+    diagnostics = deepcopy(payload.get("diagnostics", state.get("diagnostics")))
+    if not isinstance(diagnostics, dict):
+        diagnostics = {}
+    invalidation_reason = (
+        "authoritative_geometry_changed" if geometry_changed
+        else payload.get("_invalidate_derived_state")
+    )
+    if invalidation_reason:
+        diagnostics["derived_state"] = {
+            "status": "invalidated",
+            "reason": str(invalidation_reason),
+            "panel_layout_current": False,
+            "shade_analysis_current": False,
+            "estimate_recalculation_required": True,
+        }
+        extras = dict(location.extras) if isinstance(location.extras, dict) else {}
+        accepted_layout = extras.get("accepted_layout")
+        if isinstance(accepted_layout, dict) and accepted_layout.get("status") == "accepted":
+            extras["accepted_layout"] = {
+                **accepted_layout,
+                "status": "stale",
+                "stale_reason": str(invalidation_reason),
+            }
+            if isinstance(extras.get("surface_generation"), dict):
+                extras["surface_generation"] = {
+                    **extras["surface_generation"],
+                    "status": "stale",
+                    "stale_reason": str(invalidation_reason),
+                }
+            extras["surface_generation_status"] = "stale"
+            location.extras = extras
+
     revision_number = (
         db.session.query(func.max(RooftopDesign.revision_number))
         .filter(RooftopDesign.user_location_id == location_id)
@@ -275,43 +378,20 @@ def create_revision(location_id, user_id, payload=None, base_design=None):
         is_current=True,
         authoritative_roof_geojson=boundary,
         manual_obstructions_geojson=manual_obstructions,
-        accepted_roof_planes=deepcopy(
-            payload.get("accepted_roof_planes", state.get("accepted_roof_planes"))
-        ),
-        accepted_obstructions_geojson=_canonical_multipolygon(
-            payload.get(
-                "accepted_obstructions_geojson",
-                state.get("accepted_obstructions_geojson"),
-            ),
-            "accepted_obstructions_geojson",
-        ),
+        accepted_roof_planes=accepted_roof_planes,
+        accepted_obstructions_geojson=accepted_obstructions,
         roof_type=roof_type,
-        pitch_degrees=_optional_number(
-            roof_metadata.get("pitch_degrees", state.get("pitch_degrees")),
-            "pitch_degrees",
-            0,
-            90,
-        ),
-        azimuth_degrees=_optional_number(
-            roof_metadata.get("azimuth_degrees", state.get("azimuth_degrees")),
-            "azimuth_degrees",
-            0,
-            360,
-        ),
-        elevation_meters=_optional_number(
-            roof_metadata.get("elevation_meters", state.get("elevation_meters")),
-            "elevation_meters",
-        ),
-        height_meters=_optional_number(
-            roof_metadata.get("height_meters", state.get("height_meters")),
-            "height_meters",
-            0,
-        ),
-        panel_layout=deepcopy(payload.get("panel_layout", state.get("panel_layout"))),
-        shade_analysis=deepcopy(
+        pitch_degrees=pitch_degrees,
+        azimuth_degrees=azimuth_degrees,
+        elevation_meters=elevation_meters,
+        height_meters=height_meters,
+        panel_layout=(None if invalidation_reason else deepcopy(
+            payload.get("panel_layout", state.get("panel_layout"))
+        )),
+        shade_analysis=(None if invalidation_reason else deepcopy(
             payload.get("shade_analysis", state.get("shade_analysis"))
-        ),
-        diagnostics=deepcopy(payload.get("diagnostics", state.get("diagnostics"))),
+        )),
+        diagnostics=diagnostics or None,
     )
     db.session.add(design)
     db.session.flush()
@@ -326,7 +406,8 @@ def create_revision(location_id, user_id, payload=None, base_design=None):
                 **_source_payload(source),
             )
         )
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return design
 
 

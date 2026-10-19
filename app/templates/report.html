@@ -153,7 +153,14 @@
               <option value="conservative">Conservative layout</option>
             </select>
           </label>
-          <small class="roof3d-layout-help">This changes only the visual layout. It does not update the saved estimate or financial inputs.</small>
+          <small class="roof3d-layout-help">Switching mode changes only the preview. Only explicit acceptance can update the saved estimate.</small>
+          <button type="button" id="roof3d-layout-accept" class="roof3d-inspector-action" disabled>Accept visible layout</button>
+          <small id="roof3d-layout-acceptance-status" class="roof3d-layout-help" role="status" aria-live="polite">Preview only — not accepted.</small>
+          {% if loc.extras and loc.extras.surface_generation_status == 'stale' %}
+          <small class="roof3d-layout-help">Per-surface generation is stale because rooftop or shade inputs changed. Accept a current layout before using it.</small>
+          {% elif loc.extras and loc.extras.surface_generation %}
+          <small class="roof3d-layout-help">Generation: {{ loc.extras.surface_generation.surface_count }} accepted surface{% if loc.extras.surface_generation.surface_count != 1 %}s{% endif %} · {{ (loc.extras.surface_generation.model or 'fallback')|replace('_', ' ') }}. Qualitative shade is not converted to a numeric loss.</small>
+          {% endif %}
         </section>
         <section>
           <span class="roof3d-inspector-label">LAYERS</span>
@@ -417,13 +424,13 @@
   <div class="assumptions-box">
     <strong>Key assumptions (India planning guide, Aug 2026)</strong><br>
     • Bill path: ≈ ₹10/unit · ≈ 135 units/month per kW (~4–5.5 units/day/kWp on suitable days)<br>
-    • Energy check: daily units ÷ (peak sun hours × PR); PR ≈ {{ loc.performance_ratio or 0.80 }} · PSH ≈ {{ loc.peak_sun_hours_assumed or 5 }} h<br>
+    {% if loc.extras and loc.extras.generation_provenance and not loc.extras.generation_provenance.performance_ratio_applied %}• Energy model: provider-modeled yield; SIGNIX PR is not applied again<br>{% else %}• Energy check: daily units ÷ (peak sun hours × PR); PR ≈ {{ loc.performance_ratio or 0.80 }} · PSH ≈ {{ loc.peak_sun_hours_assumed or 5 }} h<br>{% endif %}
     • Final size = min(bill recommendation, roof capacity) when bill is entered · ≈ 10 m² usable roof per kWp<br>
     • PM Surya Ghar: ₹30,000/kW for first 2 kW + ₹18,000 for the 2–3 kW step · max ₹78,000 · Off-grid / non-residential = 0<br>
     • Installed cost band: residential ~₹55k–85k/kW (estimate uses mid); commercial EPC often ~₹35k–50k/kW<br>
     {% if loc.system_cost_low and loc.system_cost_high %}• This system cost band: ₹{{ '{:,.0f}'.format(loc.system_cost_low) }} – ₹{{ '{:,.0f}'.format(loc.system_cost_high) }} (excl. unusual civil/structure)<br>{% endif %}
     {% if loc.annual_om %}• Indicative annual O&amp;M reserve ≈ ₹{{ '{:,.0f}'.format(loc.annual_om) }} (~1.2% of system cost)<br>{% endif %}
-    • Orientation factor applied · recommended tilt ≈ latitude ({{ loc.recommended_tilt_deg or '—' }}°)<br>
+    {% if loc.orientation_factor is not none %}• Orientation factor applied{% else %}• No separate orientation factor applied to provider-modeled PV energy{% endif %} · recommended tilt ≈ latitude ({{ loc.recommended_tilt_deg or '—' }}°)<br>
     {% if loc.battery_kwh and loc.battery_kwh > 0 %}• Battery ≈ ₹9,000/kWh (LFP); nominal size ≠ usable energy (DoD × efficiency)<br>{% endif %}
     • 0.5%/yr degradation · tariff escalates ~{{ (loc.extras or {}).get('tariff_escalation_pct', 4) }}%/yr in nominal cashflow · simple payback uses flat year-1 tariff · not a licensed design or DISCOM quote
   </div>
@@ -443,10 +450,22 @@
 <section id="tab-generation" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-generation" tabindex="0" hidden>
   <div class="report-section-heading"><span class="report-eyebrow">ENERGY FORECAST</span><h2>When the system produces energy</h2><p>Year-one monthly output and the persisted 25-year degradation forecast.</p></div>
   <p style="font-size:13px;color:var(--gray);margin-top:0;">
-    Adjusted for roof orientation
+    {% if loc.orientation_factor is not none %}Adjusted for roof orientation{% else %}Provider-modeled PV energy; no additional orientation derate applied{% endif %}
     {% if loc.orientation_label %}({{ loc.orientation_label }}){% endif %}
     {% if loc.orientation_factor %} · factor {{ loc.orientation_factor }}{% endif %}.
   </p>
+  {% if loc.calculation_status == 'stale_assumptions' %}
+  <p class="status-banner status-banner-warning">Calculation assumptions changed after this estimate was saved. Recalculate before treating these figures as current.</p>
+  {% elif loc.calculation_status == 'legacy_unversioned' %}
+  <p class="status-banner status-banner-warning">Legacy estimate — calculation assumptions were not versioned when this result was saved.</p>
+  {% endif %}
+  {% if loc.extras and loc.extras.generation_provenance %}
+  <p style="font-size:13px;color:var(--gray);">
+    Source model: {{ (loc.extras.generation_provenance.profile_kind or 'unknown')|replace('_', ' ') }}
+    · units {{ (loc.extras.generation_provenance.profile_units or 'unknown')|replace('_', '/') }}
+    {% if loc.extras.generation_provenance.provider_system_loss_percent is not none %}· provider-modeled system loss {{ loc.extras.generation_provenance.provider_system_loss_percent }}%{% endif %}
+  </p>
+  {% endif %}
   <div class="stat-grid" style="margin-bottom:14px;">
     <div class="stat-card"><span class="label">Annual generation</span><span class="value"><span data-orientation-annual-generation>{{ '{:,.0f}'.format(loc.annual_generation or 0) }}</span> kWh</span></div>
     <div class="stat-card"><span class="label">System size</span><span class="value">{{ loc.system_size }} kW</span></div>

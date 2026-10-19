@@ -12,6 +12,25 @@ vm.createContext(context);
 vm.runInContext(source, context);
 
 const geometry = context.window.SIGNIX_ROOF3D_GEOMETRY;
+
+const contractRing = [[1, 2], [3, 4], [5, 6]];
+assert.deepEqual(JSON.parse(JSON.stringify(geometry.contractLocalRing(contractRing, null, null))), contractRing);
+const projectedFallback = geometry.contractLocalRing(null, { coordinates: [[[77, 28], [77.0001, 28], [77, 28.0001]]] }, { lng: 77, lat: 28 });
+assert.ok(projectedFallback[1][0] > projectedFallback[0][0]);
+assert.ok(projectedFallback[2][1] < projectedFallback[0][1]);
+
+function planeHeightOffset(point, surface) {
+  const pitch = Number(surface.pitch) * Math.PI / 180;
+  const azimuth = Number(surface.azimuth) * Math.PI / 180;
+  return -Math.tan(pitch) * (point[0] * Math.sin(azimuth) - point[1] * Math.cos(azimuth));
+}
+function distance3d(a, b, surface) {
+  return Math.hypot(a[0] - b[0], planeHeightOffset(a, surface) - planeHeightOffset(b, surface), a[1] - b[1]);
+}
+const pitchedSurface = { pitch: 30, azimuth: 180 };
+const physicalModule = geometry.surfacePanelRect(0, 0, 1.134, 1.762, 0, pitchedSurface);
+assert.ok(Math.abs(distance3d(physicalModule[0], physicalModule[1], pitchedSurface) - 1.134) < 1e-9);
+assert.ok(Math.abs(distance3d(physicalModule[1], physicalModule[2], pitchedSurface) - 1.762) < 1e-9);
 assert.ok(geometry, 'roof geometry test API should be exposed');
 
 const smallView = geometry.cameraFrameForBounds(

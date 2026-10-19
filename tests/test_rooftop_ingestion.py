@@ -92,6 +92,9 @@ def test_building_insights_success_is_normalized_and_persisted(
     source = data["sources"][0]
     assert source["status"] == "available"
     assert source["analysis"]["roof"]["segments"][0]["pitch_degrees"] == 14
+    assert source["analysis"]["roof"]["segments"][0]["geometry_kind"] == "axis_aligned_bounding_box"
+    assert source["analysis"]["roof"]["segments"][0]["elevation_datum"] == "mean_sea_level"
+    assert "not a surveyed facet polygon" in source["analysis"]["limitations"][0]
     assert source["analysis"]["authoritative_footprint_geojson"] == ROOF
     assert data["design"]["authoritative"]["roof_boundary"] == ROOF
 
@@ -449,3 +452,45 @@ def test_ingestion_ownership_is_enforced(client, app):
         session["_fresh"] = True
 
     assert _post(client, location_id).status_code == 404
+
+
+def test_provider_diagnostics_redact_credentials(app):
+    app.config["GOOGLE_SOLAR_API_KEY"] = "super-secret-provider-key"
+    with app.app_context():
+        diagnostic = ingestion._diagnostic(RuntimeError(
+            "request failed: https://solar.example/data?key=super-secret-provider-key&x=1"
+        ))
+
+    assert "super-secret-provider-key" not in diagnostic["message"]
+    assert "key=[REDACTED]" in diagnostic["message"]
+
+
+def test_malformed_provider_center_is_rejected():
+    payload = _building_payload()
+    payload["center"] = {"latitude": float("nan"), "longitude": 77.2091}
+
+    with pytest.raises(ValueError, match="building center is malformed"):
+        ingestion.normalize_building_insights(
+            payload, ROOF["coordinates"][0], 28.6140, 77.2091
+        )
+
+
+def test_legacy_payload_preserves_provider_geometry_provenance(client, app, monkeypatch):
+    location_id = _location(app)
+    app.config["GOOGLE_SOLAR_API_KEY"] = "test-key"
+    from app import roof_model
+    monkeypatch.setattr(roof_model, "_building_payload", lambda lat, lng: _building_payload())
+    assert _post(client, location_id).status_code == 200
+
+    with app.app_context():
+        location = db.session.get(UserLocation, location_id)
+        design = RooftopDesign.query.filter_by(
+            user_location_id=location_id, is_current=True
+        ).first()
+        payload = ingestion.legacy_roof_model_payload(design, location=location)
+
+    assert payload["provenance"]["provider"] == "google_solar"
+    assert payload["provenance"]["data_type"] == "building_insights"
+    assert payload["provenance"]["quality"] == "HIGH"
+    assert payload["roof"]["segments"][0]["geometryKind"] == "axis_aligned_bounding_box"
+    assert payload["roof"]["segments"][0]["elevationDatum"] == "mean_sea_level"
