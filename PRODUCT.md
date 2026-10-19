@@ -1,5 +1,7 @@
 # Product
 
+**Status:** Current product principles for the active root application. See [architecture](docs/architecture.md) and [known limitations](docs/known-limitations.md) for implementation detail.
+
 <!-- impeccable:product-schema 1 -->
 
 ## Platform

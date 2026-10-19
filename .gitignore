@@ -32,6 +32,15 @@ dist/
 coverage/
 htmlcov/
 .pytest_cache/
+.coverage
+coverage.xml
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+*.tmp
+*.bak
 
 # Node / frontend hints (if added later)
 node_modules/

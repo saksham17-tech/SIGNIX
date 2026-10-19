@@ -33,6 +33,8 @@ components:
 
 # Design System: SIGNIX
 
+**Status:** Current interface guidance for the active root application. Implementation ownership and validation commands live in [the frontend guide](docs/frontend-guide.md).
+
 ## Overview
 
 **Creative North Star: "The Solar Survey Sheet"**

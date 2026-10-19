@@ -1,7 +1,9 @@
 # Performance Baseline
 
+> **Historical measurement (2026-09-04).** This benchmark was captured from the embedded `solar_app/` checkout, not the current root application. It is retained as evidence of the original external-request bottleneck and must not be quoted as current production performance. The active root app now has disk caching and substantially more functionality. See [current architecture](docs/architecture.md) and remeasure before making performance claims.
+
 Date: 2026-09-04
-Environment: Local Windows development machine, Flask app running in `solar_app/`
+Environment at measurement time: Local Windows development machine, Flask app running in the embedded `solar_app/` checkout
 Scope: Baseline request time for the `/api/estimate` endpoint using the same sample rooftop polygon repeated three times.
 
 ## Measurement method

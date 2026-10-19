@@ -1,223 +1,131 @@
 # SIGNIX
 
-**Track · Save · Impact**
+SIGNIX is a Flask web application for preliminary rooftop-solar planning in India. A user locates a property, draws the authoritative roof boundary and obstructions, reviews a 3D planning model, and receives indicative system sizing, generation, subsidy, and financial results.
 
-A rooftop solar potential and subsidy estimator for Indian homes. Draw your rooftop on a map, get a data-backed solar generation estimate, PM Surya Ghar subsidy calculation, and a downloadable PDF report — all scoped to your own account.
+The application is a planning tool, not a structural survey, certified energy model, vendor quotation, or subsidy approval.
 
-🔗 **Live app:** [https://signix.onrender.com](https://signix.onrender.com)
-_(Free-tier hosting — the app sleeps after 15 minutes of inactivity, so the first request after a while may take 30–60 seconds to wake up.)_
+## Current capabilities
 
-![Python](https://img.shields.io/badge/python-3.11-blue)
-![Flask](https://img.shields.io/badge/flask-web%20framework-black)
-![License](https://img.shields.io/badge/license-MIT-green)
+- Leaflet property search, satellite map, roof-boundary drawing, and manual obstructions.
+- GeoJSON persistence using `[longitude, latitude]` and explicit Leaflet conversion.
+- Three.js roof reconstruction with simulated flat prototype geometry and normalized provider-surface support.
+- Physical-size panel packing with setbacks, obstruction avoidance, classification exclusions, and explicit layout acceptance.
+- Separate planning-preview and conservative shade policies.
+- NASA POWER irradiance, PVGIS modeled-yield fallback, deterministic offline fallback, and optional Google Solar data ingestion.
+- Per-surface accepted-layout generation, calculation provenance, and stale-state detection.
+- Indicative subsidy, tariff, savings, payback, financing, and PDF/installer reports.
+- Account-scoped saved estimates, scenarios, comparisons, settings, and English/Hindi localization.
 
----
+## Technology
 
-## What it does
+- Python 3.11, Flask, Jinja2, SQLAlchemy, Flask-Login, Flask-WTF
+- SQLite locally; PostgreSQL is supported through `DATABASE_URL`
+- Vanilla JavaScript, Leaflet, Three.js, and vendored Chart.js
+- WeasyPrint with ReportLab fallback for documents
+- pytest and Node's built-in test runner
+- Docker and Docker Compose
 
-SIGNIX estimates how much solar potential a rooftop has and what it would cost/save, using real location data rather than flat assumptions:
+## Setup
 
-1. Search for an address or paste a Google Maps link
-2. Draw your rooftop boundary on a satellite map, and mark non-usable areas (water tanks, staircases, AC units)
-3. Get an estimate: system size, annual generation, monthly savings, payback period, and PM Surya Ghar subsidy — calculated from real irradiance data for that exact latitude/longitude, not a generic national average
-4. Save estimates to your account, compare them side by side, and download a full PDF report
+### Local Python
 
----
-
-## Features
-
-- **Location-aware solar estimation** — pulls real irradiance data from NASA POWER and PVGIS for the exact coordinates drawn, with a location-sensitive offline fallback if both external APIs are unavailable (clearly flagged in the results, not silently substituted)
-- **Interactive rooftop drawing** — Leaflet-based polygon drawing for roof boundary and obstructions, with live area/capacity calculation
-- **PM Surya Ghar subsidy calculation** — indicative subsidy based on system size and property type
-- **Financial modeling** — system cost, net investment, monthly/annual savings, payback period, 25-year cashflow, LCOE
-- **PDF report generation** — a downloadable, detailed report per saved estimate (WeasyPrint, with a fallback renderer)
-- **User accounts** — signup/login/logout, with every saved location and estimate scoped privately to your account
-- **Dashboard** — quick overview of your recent estimates
-- **Compare** — put 2–3 of your saved locations side by side across system size, generation, savings, payback, and cost
-- **Savings** — aggregated view of total potential savings and environmental impact (CO₂ reduction, equivalent trees planted, fuel saved) across all your saved estimates
-- **Profile** — manage your display name, email, and password
-- **Settings** — save default tariff rate, state, and property type so new estimates start pre-filled
-- **Irradiance caching** — repeated lookups for the same location are cached, cutting estimate time from several seconds to well under 50ms on a cache hit
-
----
-
-
-## Subsidy scheme data (PM Surya Ghar)
-
-Central subsidy slabs live in the `SubsidyScheme` table and are versioned by
-`effective_from` / `effective_to` (null `effective_to` = current open-ended set).
-
-Seed the current slabs:
-
-```bash
-python scripts/seed_subsidy_scheme.py
-# or force-refresh the current revision:
-python scripts/seed_subsidy_scheme.py --force
-```
-
-`calculate_subsidy` selects the revision with the most recent `effective_from`
-on or before today. **To publish a policy change, insert a new set of rows with
-a later `effective_from` — do not edit old rows in place.**
-
-
-## Tech stack
-
-| Layer              | Technology                                                         |
-| ------------------ | ------------------------------------------------------------------ |
-| Backend            | Flask (blueprints + service layer)                                 |
-| Database           | PostgreSQL (production) / SQLite (local dev) via SQLAlchemy        |
-| Auth               | Flask-Login, Flask-WTF (CSRF), Werkzeug password hashing           |
-| Solar calculations | pvlib-style modeling, NASA POWER & PVGIS APIs                      |
-| Caching            | diskcache (irradiance lookups)                                     |
-| PDF generation     | WeasyPrint (primary), ReportLab (fallback)                         |
-| Frontend           | Jinja2 templates, vanilla JS, Leaflet.js (maps), Chart.js (charts) |
-| Testing            | pytest                                                             |
-| Containerization   | Docker, docker-compose                                             |
-| Deployment         | Render (web service + PostgreSQL)                                  |
-
----
-
-## Screenshots
-
-_(Add screenshots to a `docs/` folder and reference them here, e.g.)_
-
-```markdown
-![Dashboard](docs/screenshot-dashboard.png)
-![Rooftop drawing](docs/screenshot-estimate.png)
-![Results panel](docs/screenshot-results.png)
-```
-
----
-
-## Running locally
-
-### Option 1: Docker (recommended, matches production)
-
-```bash
+```powershell
 git clone https://github.com/saksham6541/SIGNIX.git
 cd SIGNIX
-cp .env.example .env   # then set a real SECRET_KEY
-docker compose up --build
-Visit `http://localhost:8000`. This runs against local SQLite by default.
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+# Replace SECRET_KEY and configure only the optional providers you intend to use.
+python run.py
 ```
 
-Visit `http://localhost:8000`. This runs against local SQLite by default.
+Open `http://127.0.0.1:5000`.
 
-Set `GEMINI_API_KEY` in `.env` to enable the authenticated `POST /api/assistant`
-general FAQ endpoint. It accepts JSON such as `{"message":"How is subsidy estimated?"}`
-and returns `{"response":"..."}`. The endpoint allows 20 messages per user per
-UTC day. The first implementation keeps this counter in memory, so deployments
-with multiple worker processes or instances need a shared store such as Redis
-for a reliable global limit.
+On macOS/Linux, activate with `source .venv/bin/activate` and copy the environment file with `cp .env.example .env`.
 
-To verify the real Gemini call locally, set `SIGNIX_TEST_EMAIL` and
-`SIGNIX_TEST_PASSWORD` in `.env`, start the app, then run:
+### Docker
 
 ```bash
-python scripts/verify_assistant.py
+cp .env.example .env
+# Set a production-quality SECRET_KEY in .env.
+docker compose up --build web
 ```
 
-Use `SIGNIX_BASE_URL` or `--base-url` when the app is not running at
-`http://localhost:5000`. The script logs in with a session, handles the login
-CSRF token, sends one sample question, and prints the assistant response.
-
-To test against PostgreSQL locally (matching the production setup):
+Open `http://127.0.0.1:8000`. The default Compose service stores SQLite data in the named `solar_data` volume. The optional PostgreSQL profile is:
 
 ```bash
 docker compose --profile postgres up --build web-postgres postgres
 ```
 
-### Option 2: Local Python environment
+No Google Solar or Gemini key is required for the default prototype workflow. Never commit `.env`.
 
-```bash
-git clone https://github.com/saksham6541/SIGNIX.git
-cd SIGNIX
-python -m venv .venv
-.venv\Scripts\activate      # Windows
-# source .venv/bin/activate  # macOS/Linux
-pip install -r requirements.txt
-python run.py
-Visit `http://localhost:5000`.
+## Validation
+
+GitHub Actions runs the Python suite, Python compilation, all seven application JavaScript syntax checks, the three Node regression suites, Markdown link validation, and patch-whitespace validation on pushes and pull requests targeting `main`.
+
+From the repository root with the virtual environment active, the primary checks are:
+
+```powershell
+python -m pytest tests -q
+python -m compileall -q app tests
+Get-ChildItem app\static\js -Filter *.js | ForEach-Object { node --check $_.FullName }
+node --test tests\roof3d_geometry.test.js
+node --test tests\assistant_voice.test.js tests\voice_mode.test.js
+python scripts\validate_markdown_links.py
+git diff --check
 ```
 
-Visit `http://localhost:5000`.
+Tests mock external providers where required. CI needs no `.env`, API keys, user database, or live provider calls. See the [development guide](docs/development.md#continuous-integration) for exact CI parity commands and failure guidance.
 
-### Running tests
+## Repository map
 
-```bash
-pytest
-```
-
----
-
-## Project structure
-
-```
+```text
 app/
-├── __init__.py
-├── config.py
-├── database.py            # schema init + safe startup migrations
-├── models.py               # User, UserLocation, TariffTable, SubsidyScheme
-├── solar_logic.py          # geometry, irradiance, financials, orchestration
-├── report_generator.py     # PDF generation (WeasyPrint + fallback)
-├── auth.py                 # signup, login, logout
-├── forms.py                # WTForms definitions
-├── services/
-│   ├── estimation_service.py
-│   ├── location_service.py
-│   └── cache.py             # diskcache-backed irradiance caching
-├── pages.py                 # dashboard, profile, compare, savings, settings
-├── estimate.py               # /api/estimate
-├── locations.py               # location CRUD, geocoding
-├── static/
-│   ├── css/style.css
-│   └── js/ (main.js, map.js)
-└── templates/
-tests/
-├── test_solar_logic.py
-├── test_routes.py
-├── test_auth.py
-├── test_compare.py
-├── test_savings.py
-└── conftest.py
+  templates/             Jinja frontend templates
+  static/css/            Shared visual system and responsive styles
+  static/js/             Map, report, 3D, AI, assistant, and chart interactions
+  services/              Estimation, location, rooftop, shade, and report services
+  *.py                   Flask blueprints, models, configuration, calculations
+tests/                    Python, Node, fixtures, and golden calculation cases
+docs/                     Current architecture and team guides
+scripts/                  Maintainer and verification utilities
+translations/             Babel catalogs
+run.py                    Flask/Gunicorn application entry point
+Dockerfile                Container image
+docker-compose.yml        SQLite and optional PostgreSQL services
+solar_app/                Embedded historical Git checkout; not the active app
 ```
 
----
+The active application is the root `app/` package. Do not edit `solar_app/` for current features; see [Architecture](docs/architecture.md#embedded-solar_app-checkout).
 
-## Roadmap
+## Team documentation
 
-This project is being built incrementally rather than all at once. Completed so far:
+- [Architecture and data flows](docs/architecture.md)
+- [Frontend guide](docs/frontend-guide.md)
+- [Backend guide](docs/backend-guide.md)
+- [Verified API contracts](docs/api-contracts.md)
+- [Development and collaboration](docs/development.md)
+- [Known limitations](docs/known-limitations.md)
+- [Product principles](PRODUCT.md)
+- [Design system](DESIGN.md)
 
-- ✅ Core estimation engine with real irradiance data and location-sensitive fallback
-- ✅ Test suite covering calculations, routes, auth, and cross-user data isolation
-- ✅ Services-layer refactor (routes split into blueprints, business logic extracted)
-- ✅ Irradiance caching
-- ✅ Frontend polish (inline results panel, no full-page reload on estimate)
-- ✅ Full authentication with per-user data scoping
-- ✅ Compare, Savings, Profile, and Settings pages
-- ✅ Dockerized, deployed on Render with PostgreSQL
+`PERFORMANCE_BASELINE.md` and `PRD_TECH_STACK_MIGRATION.md` are retained as historical records and are not current setup or architecture instructions.
 
-Possible future directions: PDF comparison exports, richer savings tracking against real utility bills, notification preferences.
+## Deployment
 
----
+The verified container production command is:
+
+```bash
+gunicorn --bind 0.0.0.0:8000 --workers 2 run:app
+```
+
+`docker-entrypoint.sh` initializes the database and seeds reference tariff/subsidy rows before starting the command. Configure `SECRET_KEY` and `DATABASE_URL` in the deployment environment. Render can run this container, but no `render.yaml` is present; service and database configuration must be maintained in the Render dashboard.
+
+## Important limitations
+
+The user-drawn boundary is authoritative, but prototype roof geometry, shade coverage, orientation modeling, provider availability, financial assumptions, tariffs, and subsidies can be incomplete or approximate. Read [Known limitations](docs/known-limitations.md) before changing accuracy claims or presenting results externally.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
----
-
-## Author
-
-**Saksham Kaushik**
-[github.com/saksham6541/SIGNIX](https://github.com/saksham6541/SIGNIX)
-
----
-
-_Indicative estimates only. Verify DISCOM / MNRE rules before procurement._
-
-## Stage 2 AI rooftop visualization
-
-The report's 3D rooftop preview now includes an **AI analyze roof** workflow. It requests a bounded satellite crop from Esri World Imagery and sends that image to the configured Gemini vision model. The model estimates roof type, pitch, ridge direction, visible rooftop structures, and confidence. Those results are advisory: the user-drawn rooftop boundary remains authoritative, and the Three.js renderer still performs deterministic polygon/obstruction checks before placing physical-size PV modules.
-
-Set `GEMINI_API_KEY` on the server. `GEMINI_ROOF_MODEL` is optional and defaults to the existing `GEMINI_MODEL`. If AI or satellite imagery is unavailable, the existing Stage 1 3D renderer continues to work and manual roof-slope controls remain available.
+MIT. See [LICENSE](LICENSE).

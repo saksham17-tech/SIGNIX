@@ -1,10 +1,12 @@
 # Product Requirements Document (PRD)
 
+> **Historical planning record.** The phases described here have largely been superseded: the active root app now has blueprints, services, authentication, tests, caching, Docker, PostgreSQL support, rooftop reconstruction, and accepted-layout calculations. Do not use this file for current setup or structure. See [README](README.md), [architecture](docs/architecture.md), and [development guide](docs/development.md). Original planning assertions are retained below for history.
+
 ## Rooftop Solar Estimator — Incremental Improvement Plan
 
 **Document Version:** 2.0 (revised from v1.0)
 **Date:** September 2, 2026
-**Status:** In Planning
+**Status:** Superseded historical plan
 **Owner:** Saksham Kaushik
 
 **Revision note:** v1.0 of this PRD proposed a full microservice rewrite (FastAPI + React + PostgreSQL + Redis + Celery + Docker + CI/CD, 14 weeks, 3.8 FTE, $105–275/month infra). That plan is sized for a production app with real concurrent traffic and a multi-person team. The actual codebase today is a single-developer Flask app (~2,000 lines across `routes.py`, `solar_logic.py`, `models.py`, `report_generator.py`) with a 24 KB SQLite database and no auth or multi-user features. This version keeps the original's useful ideas but rescopes effort, timeline, and infrastructure to match that reality — and treats the bigger migration as an *optional later phase*, not the starting point.
