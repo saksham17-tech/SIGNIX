@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Python, JavaScript, and documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Install PDF system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu-core \
+            libharfbuzz0b \
+            libharfbuzz-subset0 \
+            libpango-1.0-0 \
+            libpangoft2-1.0-0
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Verify native PDF and raster dependencies
+        run: |
+          python - <<'PY'
+          import rasterio
+          from weasyprint import HTML
+
+          pdf = HTML(string="<p>SIGNIX CI smoke</p>").write_pdf()
+          assert pdf.startswith(b"%PDF")
+          print(f"WeasyPrint PDF bytes: {len(pdf)}; rasterio: {rasterio.__version__}")
+          PY
+
+      - name: Run Python tests
+        run: python -m pytest tests -q
+
+      - name: Compile Python sources
+        run: python -m compileall -q app tests
+
+      - name: Check application JavaScript syntax
+        run: |
+          mapfile -d '' javascript_files < <(find app/static/js -maxdepth 1 -type f -name '*.js' -print0 | sort -z)
+          if [ "${#javascript_files[@]}" -ne 7 ]; then
+            echo "Expected 7 application JavaScript files, found ${#javascript_files[@]}." >&2
+            exit 1
+          fi
+          for javascript_file in "${javascript_files[@]}"; do
+            node --check "$javascript_file"
+          done
+
+      - name: Run JavaScript regression tests
+        run: node --test tests/roof3d_geometry.test.js tests/assistant_voice.test.js tests/voice_mode.test.js
+
+      - name: Validate Markdown links and anchors
+        run: python scripts/validate_markdown_links.py
+
+      - name: Check patch whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          zero_sha="0000000000000000000000000000000000000000"
+          if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "$zero_sha" ] && git cat-file -e "$BASE_SHA^{commit}"; then
+            git diff --check "$BASE_SHA" HEAD
+          else
+            git show --check --format= HEAD
+          fi
