@@ -6,6 +6,11 @@
 <style>
   @page { size: A4; margin: 1.6cm; }
   @font-face { font-family: 'Noto Sans Devanagari'; src: url("{{ pdf_devanagari_font_url }}") format('truetype'); font-weight: 400; font-style: normal; }
+  /* Separate font resources prevent shaped title-word glyph IDs from sharing an invalid ToUnicode mapping. */
+  {% for title_word_index in range(1, 5) %}
+  @font-face { font-family: 'Noto Sans Devanagari Title {{ title_word_index }}'; src: url("{{ pdf_devanagari_font_url }}") format('truetype'); font-weight: 400; font-style: normal; }
+  .hindi-title-word-{{ title_word_index }} { font-family: 'Noto Sans Devanagari Title {{ title_word_index }}'; }
+  {% endfor %}
   body { font-family: {% if (pdf_locale|default('en')) == 'hi' %}'Noto Sans Devanagari', {% endif %}'DejaVu Sans', Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 10.5px; line-height: 1.45; }
   h1 { color: #c47a0b; margin: 0 0 4px; font-size: 18px; }
   h2 { color: #3d2570; border-bottom: 1.5px solid #e0d6f0; padding-bottom: 3px; margin: 16px 0 8px; font-size: 13px; }
@@ -51,7 +56,8 @@
 </style>
 </head>
 <body>
-  <h1>{{ _('Rooftop Solar Estimation Report') }}</h1>
+  {% set report_title = _('Rooftop Solar Estimation Report') %}
+  <h1>{% if (pdf_locale|default('en')) == 'hi' %}{% for title_word in report_title.split() %}<span class="hindi-title-word-{{ loop.index }}">{{ title_word }}</span>{% if not loop.last %} {% endif %}{% endfor %}{% else %}{{ report_title }}{% endif %}</h1>
   <p class="address">{{ loc.address }}</p>
   {% if loc.map_svg_data_uri or loc.map_png_data_uri %}
   <div class="map-snapshot" style="margin:10px 0 14px;">

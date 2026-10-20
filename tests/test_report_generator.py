@@ -1,3 +1,5 @@
+import sys
+
 from app.models import UserLocation
 from app.report_generator import (
     _generate_pdf_reportlab,
@@ -78,14 +80,25 @@ def test_rating_visuals_render_for_html_and_reportlab_and_legacy_html_omits_rati
     assert fallback_pdf.read(4) == b"%PDF"
 
 
-def test_hindi_weasyprint_pdf_contains_devanagari_text(app):
+def test_hindi_weasyprint_pdf_contains_devanagari_text(app, monkeypatch):
+    if sys.platform.startswith("linux"):
+
+        def reject_reportlab_fallback(*args, **kwargs):
+            raise AssertionError("Hindi PDF regression must use WeasyPrint on Linux")
+
+        monkeypatch.setattr(
+            "app.report_generator._generate_pdf_reportlab",
+            reject_reportlab_fallback,
+        )
+
     with app.test_request_context("/report/1/pdf"):
         session["language"] = "hi"
         pdf = generate_pdf_report(make_location())
 
     from pypdf import PdfReader
 
-    text = "\n".join(page.extract_text() or "" for page in PdfReader(pdf).pages)
+    reader = PdfReader(pdf)
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
     assert "रूफटॉप सोलर अनुमान रिपोर्ट" in text
     assert any("\u0900" <= character <= "\u097f" for character in text)
     assert "�" not in text
@@ -94,9 +107,24 @@ def test_hindi_weasyprint_pdf_contains_devanagari_text(app):
     assert "kW" in text
     assert "4,000" in text or "4000" in text
 
+    if sys.platform.startswith("linux"):
+        title_fonts = {
+            str(font.get_object().get("/BaseFont")): font.get_object()
+            for page in reader.pages
+            for font in page["/Resources"]["/Font"].get_object().values()
+            if "Noto-Sans-Devanagari-Title-"
+            in str(font.get_object().get("/BaseFont"))
+        }
+        assert len(title_fonts) == 4
+        for font in title_fonts.values():
+            descendant = font["/DescendantFonts"][0].get_object()
+            descriptor = descendant["/FontDescriptor"].get_object()
+            assert descriptor.get("/FontFile2") is not None
+
 
 def test_hindi_pdf_template_uses_packaged_font_file_uri(app):
     with app.test_request_context("/report/1/pdf"):
+        session["language"] = "hi"
         font_uri = _packaged_devanagari_font_uri()
         html = render_template(
             "pdf_report.html",
@@ -108,3 +136,5 @@ def test_hindi_pdf_template_uses_packaged_font_file_uri(app):
     assert font_uri.startswith("file:")
     assert font_uri in html
     assert 'src: url("/static/fonts/NotoSansDevanagari-Regular.ttf")' not in html
+    assert html.count("Noto Sans Devanagari Title") == 8
+    assert html.count('class="hindi-title-word-') == 4
