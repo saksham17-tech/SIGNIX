@@ -44,11 +44,26 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
+            fontconfig \
             fonts-dejavu-core \
             libharfbuzz0b \
             libharfbuzz-subset0 \
             libpango-1.0-0 \
             libpangoft2-1.0-0
+
+      - name: Verify packaged Devanagari font
+        run: |
+          font_file="$PWD/app/static/fonts/NotoSansDevanagari-Regular.ttf"
+          test -s "$font_file"
+          fc-scan --format '%{family}\n' "$font_file" | grep -F 'Noto Sans Devanagari'
+          install -Dm644 "$font_file" "$HOME/.local/share/fonts/signix/NotoSansDevanagari-Regular.ttf"
+          fc-cache -f "$HOME/.local/share/fonts"
+          font_match="$(fc-match -f '%{family}|%{file}\n' 'Noto Sans Devanagari')"
+          echo "$font_match"
+          case "$font_match" in
+            *"Noto Sans Devanagari"*"NotoSansDevanagari-Regular.ttf"*) ;;
+            *) echo "Noto Sans Devanagari did not resolve to the packaged font." >&2; exit 1 ;;
+          esac
 
       - name: Install Python dependencies
         run: python -m pip install -r requirements.txt

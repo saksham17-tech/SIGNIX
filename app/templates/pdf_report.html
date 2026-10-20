@@ -5,7 +5,7 @@
 <title>{{ _('Solar Report') }} - {{ loc.address }}</title>
 <style>
   @page { size: A4; margin: 1.6cm; }
-  @font-face { font-family: 'Noto Sans Devanagari'; src: url("/static/fonts/NotoSansDevanagari-Regular.ttf") format('truetype'); font-weight: 400; font-style: normal; }
+  @font-face { font-family: 'Noto Sans Devanagari'; src: url("{{ pdf_devanagari_font_url }}") format('truetype'); font-weight: 400; font-style: normal; }
   body { font-family: {% if (pdf_locale|default('en')) == 'hi' %}'Noto Sans Devanagari', {% endif %}'DejaVu Sans', Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 10.5px; line-height: 1.45; }
   h1 { color: #c47a0b; margin: 0 0 4px; font-size: 18px; }
   h2 { color: #3d2570; border-bottom: 1.5px solid #e0d6f0; padding-bottom: 3px; margin: 16px 0 8px; font-size: 13px; }

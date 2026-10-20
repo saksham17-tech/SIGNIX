@@ -9,6 +9,8 @@
 
 WeasyPrint requires native libraries in some local environments; the Dockerfile installs its Linux dependencies. The application retains a ReportLab fallback.
 
+Hindi PDF reports use the packaged `app/static/fonts/NotoSansDevanagari-Regular.ttf` file. The application gives WeasyPrint an absolute `file:` URI so report rendering does not depend on a running Flask static-file server. Linux CI and the Docker image also register that same file with Fontconfig; `fc-scan` and `fc-match "Noto Sans Devanagari"` should identify it. On Windows, a missing Pango runtime causes the application to use its ReportLab fallback, so a local PDF test can pass without exercising WeasyPrint; the Ubuntu CI job is the authoritative WeasyPrint check.
+
 ## Environment
 
 Create `.env` from `.env.example` and replace `SECRET_KEY`. Provider keys are optional. `.env`, databases, caches, virtual environments, editor settings, logs, generated PDFs, and build output are ignored.

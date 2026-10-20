@@ -2,6 +2,7 @@ from app.models import UserLocation
 from app.report_generator import (
     _generate_pdf_reportlab,
     _enrich_location_data,
+    _packaged_devanagari_font_uri,
     generate_pdf_report,
 )
 from flask import render_template, session
@@ -92,3 +93,18 @@ def test_hindi_weasyprint_pdf_contains_devanagari_text(app):
     assert "kWh" in text
     assert "kW" in text
     assert "4,000" in text or "4000" in text
+
+
+def test_hindi_pdf_template_uses_packaged_font_file_uri(app):
+    with app.test_request_context("/report/1/pdf"):
+        font_uri = _packaged_devanagari_font_uri()
+        html = render_template(
+            "pdf_report.html",
+            loc=_enrich_location_data(make_location()),
+            pdf_locale="hi",
+            pdf_devanagari_font_url=font_uri,
+        )
+
+    assert font_uri.startswith("file:")
+    assert font_uri in html
+    assert 'src: url("/static/fonts/NotoSansDevanagari-Regular.ttf")' not in html

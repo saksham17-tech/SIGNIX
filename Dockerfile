@@ -27,6 +27,7 @@ RUN apt-get update \
         libopenjp2-7 \
         libpng16-16 \
         shared-mime-info \
+        fontconfig \
         fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,6 +37,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && install -D -m 0644 app/static/fonts/NotoSansDevanagari-Regular.ttf /usr/local/share/fonts/signix/NotoSansDevanagari-Regular.ttf \
+    && fc-cache -f /usr/local/share/fonts \
     && mkdir -p /app/data
 
 VOLUME ["/app/data"]

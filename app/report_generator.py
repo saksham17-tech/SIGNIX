@@ -9,8 +9,25 @@ Both paths receive the same enriched location dict as the HTML report page.
 import io
 import time
 from pathlib import Path
-from flask import render_template
+from flask import current_app, render_template
 from flask_babel import get_locale, gettext as _
+
+
+def _packaged_devanagari_font_uri():
+    """Return the packaged Devanagari font as an absolute file URI.
+
+    WeasyPrint does not run through Flask's HTTP server when reports are
+    generated in tests, workers, or CLI jobs.  A root-relative ``/static`` URL
+    therefore cannot be fetched reliably in those environments.
+    """
+    font_path = (
+        Path(current_app.static_folder)
+        / "fonts"
+        / "NotoSansDevanagari-Regular.ttf"
+    ).resolve()
+    if not font_path.is_file():
+        raise RuntimeError(f"Packaged Devanagari font is missing: {font_path}")
+    return font_path.as_uri()
 
 
 def _enrich_location_data(location):
@@ -182,6 +199,7 @@ def generate_pdf_report(location, locale=None, mode="full"):
             template_name,
             loc=data,
             pdf_locale=active_locale,
+            pdf_devanagari_font_url=_packaged_devanagari_font_uri(),
         )
         print(
             f"[TIMING] PDF render template elapsed: {(time.perf_counter() - pdf_start) * 1000:.2f} ms"
