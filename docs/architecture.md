@@ -84,14 +84,23 @@ The application initializes schema compatibility in `app/database.py`; it does n
 
 Changes to these contracts require coordinated frontend, backend, and regression-test updates.
 
-## Embedded `solar_app/` checkout
+## Historical `solar_app/` archive
 
-`solar_app/` is an embedded Git checkout recorded by the outer repository as gitlink commit `a57048701b3bf20e0913179cd0b806d22500d54d`. It has its own `.git`, history, ignored databases, caches, and older application copy. The outer runtime, tests, Docker build, and imports do not depend on it, but deleting it would remove an independently recoverable checkout and is not a safe cleanup action without first deciding how to preserve that history.
+The obsolete `solar_app/` checkout was removed from the working tree on
+2026-10-20 after a verified filesystem archive preserved its complete `.git`
+directory, reachable history, working files, three modified documentation
+files, ignored environment/database files, caches, branches, remote metadata,
+and commit identity. Before removal, the outer repository recorded it as a
+mode-`160000` gitlink at commit
+`a57048701b3bf20e0913179cd0b806d22500d54d`, without a corresponding root
+`.gitmodules` entry.
 
-The gitlink was introduced in the outer repository's first commit, but no root `.gitmodules` entry exists. Its nested checkout currently uses the same GitHub repository remote and has independent commits. That evidence is compatible with either an incomplete submodule setup or a historical embedded checkout; it is not sufficient to safely declare the entry accidental.
-
-Treat it as historical reference only. Run commands from the outer repository root and modify the root `app/` implementation for current work. CI explicitly leaves submodule initialization disabled, targets `tests/` rather than bare pytest discovery, and validates only outer-repository Markdown. A separate, explicitly authorized task must decide whether to formalize the submodule, archive its history and remove the gitlink, or preserve the current arrangement.
+The removed checkout contained an older copy of the application. The root
+runtime, tests, Docker build, and imports did not depend on it, and the root
+`app/` implementation contains all application files and Python symbols that
+were present there. Current development and validation therefore operate only
+from the outer repository root.
 
 ## Deployment
 
-The Docker image installs `requirements.txt`, copies the active outer checkout while `.dockerignore` excludes `solar_app/`, and runs `docker-entrypoint.sh`. The entrypoint initializes tables and seed rows, then executes Gunicorn. Compose offers a persistent SQLite volume and an optional PostgreSQL profile. The repository CI validates source, documentation, and tests but does not build or deploy the image. No `render.yaml` currently exists.
+The Docker image installs `requirements.txt`, copies the active root application, and runs `docker-entrypoint.sh`. The entrypoint initializes tables and seed rows, then executes Gunicorn. Compose offers a persistent SQLite volume and an optional PostgreSQL profile. The repository CI validates source, documentation, and tests but does not build or deploy the image. No `render.yaml` currently exists.

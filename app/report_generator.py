@@ -53,6 +53,11 @@ def _enrich_location_data(location):
         "cashflow_25yr",
         "simple_payback_years",
         "nominal_payback_years",
+        "discounted_payback_years",
+        "discount_rate_pct",
+        "npv",
+        "lifecycle_projection",
+        "financial_provenance",
         "tariff_escalation_pct",
         "emi",
         "sensitivity",
@@ -706,7 +711,7 @@ def _generate_pdf_reportlab(loc, locale=None, mode="full"):
             ("Peak sun hours (assumed)", f"{loc['peak_sun_hours_assumed']} h/day")
         )
     if loc.get("lcoe") is not None:
-        perf.append(("LCOE (25 yr)", f"{_inr_prefix()}{loc['lcoe']}/kWh"))
+        perf.append(("Discounted LCOE (25 yr)", f"{_inr_prefix()}{loc['lcoe']}/kWh"))
     if loc.get("lifetime_kwh"):
         perf.append(("Lifetime energy (25 yr)", f"{loc['lifetime_kwh']:,.0f} kWh"))
     if loc.get("self_consumption_frac") is not None:
@@ -768,9 +773,24 @@ def _generate_pdf_reportlab(loc, locale=None, mode="full"):
     fin.append((SUBSIDY_ELIGIBILITY_ASSUMPTION, ""))
     fin.append(("Net investment", _inr(loc.get("net_investment"))))
     fin.append(("Estimated monthly savings", _inr(loc.get("monthly_savings"))))
-    fin.append(
-        ("Est. 25-year bill savings", _inr((loc.get("monthly_savings") or 0) * 12 * 25))
-    )
+    lifecycle = loc.get("lifecycle_projection") or {}
+    if lifecycle:
+        fin.append((
+            "25-year net operating savings",
+            _inr(lifecycle.get("lifetime_net_savings_before_upfront")),
+        ))
+        fin.append((
+            "Discounted payback",
+            (
+                f"{loc.get('discounted_payback_years')} years"
+                if loc.get("discounted_payback_years") is not None
+                else "No break-even in 25 years"
+            ),
+        ))
+        fin.append((
+            f"Net present value ({loc.get('discount_rate_pct')}%)",
+            _inr(loc.get("npv")),
+        ))
     if loc.get("annual_om"):
         fin.append(("Indicative annual O&M", _inr(loc.get("annual_om"))))
     kv_table(fin)
@@ -796,6 +816,12 @@ def _generate_pdf_reportlab(loc, locale=None, mode="full"):
 
     section("6. Environmental impact")
     env_rows = [("CO₂ reduction / year", f"{loc.get('co2_reduction_tons')} tons")]
+    emissions = (loc.get("financial_provenance") or {}).get("environmental_factor") or {}
+    if emissions:
+        env_rows.append((
+            "Grid emissions factor",
+            f"{emissions.get('value')} {emissions.get('units')} (planning estimate)",
+        ))
     eq = loc.get("environmental_equivalents") or {}
     if eq:
         env_rows.append(("Equivalent trees planted", f"~{eq.get('trees_planted')}"))
@@ -813,7 +839,8 @@ def _generate_pdf_reportlab(loc, locale=None, mode="full"):
         Paragraph(
             "<b>Key assumptions:</b> Bill path ≈ ₹10/unit · ~135 units/month/kW (~4–5.5 units/day/kWp). "
             "PM Surya Ghar: ₹30,000/kW first 2 kW + ₹18,000 for 2–3 kW step · max ₹78,000. "
-            "Residential cost band ~₹55k–85k/kW. ~10 m² usable roof per kWp. 0.5%/yr degradation. "
+            "Residential cost band ~₹55k–85k/kW. ~10 m² usable roof per kWp. 0.5%/yr degradation; "
+            "annual O&M is subtracted and discounted metrics use an explicit planning rate. "
             "Not a licensed design or DISCOM quote.",
             styles["Muted"],
         )

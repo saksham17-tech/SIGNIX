@@ -1,14 +1,14 @@
 # Performance Baseline
 
-> **Historical measurement (2026-09-04).** This benchmark was captured from the embedded `solar_app/` checkout, not the current root application. It is retained as evidence of the original external-request bottleneck and must not be quoted as current production performance. The active root app now has disk caching and substantially more functionality. See [current architecture](docs/architecture.md) and remeasure before making performance claims.
+> **Historical measurement (2026-09-04).** This benchmark was captured from the now-removed historical `solar_app/` checkout, not the current root application. That checkout and its Git history were archived before removal. This document is retained as evidence of the original external-request bottleneck and must not be quoted as current production performance. The active root app now has disk caching and substantially more functionality. See [current architecture](docs/architecture.md#historical-solar_app-archive) and remeasure before making performance claims.
 
 Date: 2026-09-04
-Environment at measurement time: Local Windows development machine, Flask app running in the embedded `solar_app/` checkout
+Environment at measurement time: Local Windows development machine, Flask app running in the historical `solar_app/` checkout (subsequently archived and removed)
 Scope: Baseline request time for the `/api/estimate` endpoint using the same sample rooftop polygon repeated three times.
 
 ## Measurement method
 
-- Started the Flask app from `solar_app/run.py`.
+- Started the historical Flask app from `solar_app/run.py` (the path no longer exists in the active working tree).
 - Sent the same POST payload to `http://127.0.0.1:5000/api/estimate` three times.
 - Recorded the elapsed wall-clock time on the client side for each run.
 - The application has timing logs in the route handler and estimation engine (`[TIMING] ...`) to separate total request time from sub-steps.

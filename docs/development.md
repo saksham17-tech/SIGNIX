@@ -34,7 +34,7 @@ Copy-Item .env.example .env
 python run.py
 ```
 
-The root `requirements.txt` is authoritative. The nested `solar_app/requirements.txt` belongs to the embedded historical checkout.
+The root `requirements.txt` is authoritative.
 
 ## Test workflow
 
@@ -67,7 +67,7 @@ Tests may create ignored `__pycache__/` and `.pytest_cache/` directories. They a
 8. `python scripts/validate_markdown_links.py`
 9. `git diff --check` over the pushed or pull-request change range
 
-The explicit `tests` path prevents pytest from collecting the historical nested checkout. The Node tests use the built-in test runner and deterministic test doubles; they do not require a browser or JavaScript package installation. The Markdown validator uses only the Python standard library and validates tracked or non-ignored local Markdown targets and GitHub-style heading anchors.
+The explicit `tests` path keeps collection scoped to the maintained application suite. The Node tests use the built-in test runner and deterministic test doubles; they do not require a browser or JavaScript package installation. The Markdown validator uses only the Python standard library and validates tracked or non-ignored local Markdown targets and GitHub-style heading anchors.
 
 Tests isolate databases through pytest fixtures and mock provider requests. CI deliberately does not supply `.env`, Google Solar, Gemini, NASA POWER, PVGIS, geocoding, database, or other service credentials. A failure caused by an attempted live request should be treated as a test-isolation defect, not fixed by adding a secret.
 
@@ -87,7 +87,7 @@ git diff --check
 
 Interpret failures from the first failing step: pytest identifies backend/contract regressions; `compileall` identifies invalid Python; `node --check` identifies invalid JavaScript; Node TAP output identifies geometry or voice regressions; the Markdown validator prints each broken source link; and `git diff --check` identifies whitespace errors. GitHub-hosted Linux remains the authoritative check for filesystem case sensitivity and Linux dependency compatibility.
 
-CI does not build or deploy the Docker image, exercise PostgreSQL, run full browser automation, or initialize the unresolved `solar_app/` gitlink. Those remain explicit integration or release checks.
+CI does not build or deploy the Docker image, exercise PostgreSQL, or run full browser automation. Those remain explicit integration or release checks.
 
 ## Collaboration
 
@@ -113,4 +113,4 @@ Check imports, scripts, Docker, report generation, and tests before removing a p
 
 ## Deployment changes
 
-Validate `Dockerfile`, `docker-entrypoint.sh`, and Compose paths together. The image build context is the outer repository root and excludes `solar_app/`. CI validates source and tests but does not build the image or deploy it. No Render manifest currently exists.
+Validate `Dockerfile`, `docker-entrypoint.sh`, and Compose paths together. The image build context is the repository root. CI validates source and tests but does not build the image or deploy it. No Render manifest currently exists.

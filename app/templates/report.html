@@ -402,7 +402,7 @@
     {% if loc.lcoe %}
     <div class="kpi-card">
       <span class="kpi-value">₹{{ loc.lcoe }}</span>
-      <span class="kpi-label">LCOE<br>₹/kWh (25 yr)</span>
+      <span class="kpi-label">Discounted LCOE<br>₹/kWh (25 yr)</span>
     </div>
     {% endif %}
     {% if loc.lifetime_kwh %}
@@ -432,7 +432,7 @@
     {% if loc.annual_om %}• Indicative annual O&amp;M reserve ≈ ₹{{ '{:,.0f}'.format(loc.annual_om) }} (~1.2% of system cost)<br>{% endif %}
     {% if loc.orientation_factor is not none %}• Orientation factor applied{% else %}• No separate orientation factor applied to provider-modeled PV energy{% endif %} · recommended tilt ≈ latitude ({{ loc.recommended_tilt_deg or '—' }}°)<br>
     {% if loc.battery_kwh and loc.battery_kwh > 0 %}• Battery ≈ ₹9,000/kWh (LFP); nominal size ≠ usable energy (DoD × efficiency)<br>{% endif %}
-    • 0.5%/yr degradation · tariff escalates ~{{ (loc.extras or {}).get('tariff_escalation_pct', 4) }}%/yr in nominal cashflow · simple payback uses flat year-1 tariff · not a licensed design or DISCOM quote
+    • 0.5%/yr degradation · tariff escalates ~{{ (loc.extras or {}).get('tariff_escalation_pct', 4) }}%/yr · O&amp;M is subtracted once · discount rate {{ (loc.extras or {}).get('discount_rate_pct', 8) }}%/yr · not a licensed design or DISCOM quote
   </div>
 
   {% if loc.planning_notes %}
@@ -513,6 +513,9 @@
 
 <section id="tab-financial" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-financial" tabindex="0" hidden>
   <div class="report-section-heading"><span class="report-eyebrow">PROJECT ECONOMICS</span><h2>Financial progression</h2><p>Cashflow and savings use the persisted SIGNIX financial model.</p></div>
+  {% if loc.financial_status and loc.financial_status != 'current' %}
+  <p class="status-banner status-banner-warning">Financial projection status: {{ loc.financial_status|replace('_', ' ') }}. Recalculate before using it for a decision.</p>
+  {% endif %}
   <div class="report-visual-grid">
     <article class="report-visual report-visual-wide">
       <div class="report-visual-heading"><h3>Payback and cumulative cashflow</h3><strong>{% if loc.chart_data.financial.payback_year %}Break-even {{ loc.chart_data.financial.payback_year }} years{% else %}No break-even in series{% endif %}</strong></div>
@@ -550,10 +553,12 @@
     <p class="subsidy-eligibility-assumption">{{ subsidy_eligibility_assumption }}</p>
     <div class="fin-row total"><span>Net Investment</span><span>₹{{ '{:,.0f}'.format(loc.net_investment or 0) }}</span></div>
     <div class="fin-row"><span>{{ _('Nominal payback') }} <small>(escalating tariff)</small></span><span>{% set nom = (loc.extras or {}).get('nominal_payback_years', loc.payback_years) %}{% if nom %}{{ nom }} yrs{% else %}—{% endif %}</span></div>
-    <div class="fin-row"><span>{{ _('Simple payback') }} <small>(flat tariff)</small></span><span>{% set simp = (loc.extras or {}).get('simple_payback_years') %}{% if simp %}{{ simp }} yrs{% else %}—{% endif %}</span></div>
+    <div class="fin-row"><span>{{ _('Simple payback') }} <small>(year-one net savings)</small></span><span>{% set simp = (loc.extras or {}).get('simple_payback_years') %}{% if simp %}{{ simp }} yrs{% else %}—{% endif %}</span></div>
+    <div class="fin-row"><span>{{ _('Discounted payback') }} <small>({{ (loc.extras or {}).get('discount_rate_pct', 8) }}% nominal discount rate)</small></span><span>{% set disc = (loc.extras or {}).get('discounted_payback_years') %}{% if disc %}{{ disc }} yrs{% else %}No break-even in 25 yrs{% endif %}</span></div>
+    <div class="fin-row"><span>{{ _('Net present value') }}</span><span>{% if (loc.extras or {}).get('npv') is not none %}₹{{ '{:,.0f}'.format((loc.extras or {}).get('npv')) }}{% else %}—{% endif %}</span></div>
     <div class="fin-row"><span>Est. 25-year bill savings</span><span>{% if loc.chart_data.financial.cumulative_savings %}₹{{ '{:,.0f}'.format(loc.chart_data.financial.cumulative_savings[-1]) }}{% else %}—{% endif %}</span></div>
     {% if loc.lcoe %}
-    <div class="fin-row"><span>Levelised cost of energy</span><span>₹{{ loc.lcoe }}/kWh</span></div>
+    <div class="fin-row"><span>Discounted levelised cost of energy</span><span>₹{{ loc.lcoe }}/kWh</span></div>
     {% endif %}
     <p class="monetary-disclaimer">{{ monetary_disclaimer }}</p>
   </div>
@@ -571,8 +576,8 @@
         <strong>₹{{ '{:,.0f}'.format(emi.monthly_emi or 0) }}</strong>
       </div>
       <div class="emi-card">
-        <span class="emi-label">{{ _('Monthly bill savings') }}</span>
-        <strong>₹{{ '{:,.0f}'.format(loc.monthly_savings or 0) }}</strong>
+        <span class="emi-label">{{ _('Monthly benefit after O&M') }}</span>
+        <strong>₹{{ '{:,.0f}'.format(emi.monthly_net_savings_after_om or 0) }}</strong>
       </div>
       <div class="emi-card {% if emi.covers_emi %}emi-positive{% else %}emi-caution{% endif %}">
         <span class="emi-label">{{ _('Savings − EMI') }}</span>
@@ -666,7 +671,7 @@
   </div>
   {% endif %}
 
-  <p class="chart-note">Cashflow includes {{ loc.chart_data.energy.degradation_pct }}% annual module degradation and {{ (loc.extras or {}).get('tariff_escalation_pct', 4) }}% tariff escalation. O&amp;M is displayed as a planning reference and is not silently subtracted from the persisted cashflow series.</p>
+  <p class="chart-note">Cashflow includes {{ loc.chart_data.energy.degradation_pct }}% annual module degradation, {{ (loc.extras or {}).get('tariff_escalation_pct', 4) }}% retail-tariff escalation, and subtracts the annual O&amp;M reserve once. Fixed feed-in compensation is not escalated. Self-consumption is a planning assumption, not measured household demand.</p>
 </section>
 
 <section id="tab-capex-dpa" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-capex-dpa" tabindex="0" hidden>
@@ -828,15 +833,15 @@
 </section>
 
 <section id="tab-environmental" class="tab-panel" role="tabpanel" aria-labelledby="report-tab-environmental" tabindex="0" hidden>
-  <div class="report-section-heading"><span class="report-eyebrow">ENVIRONMENTAL OUTCOME</span><h2>Annual avoided emissions</h2><p>Equivalents use the existing SIGNIX calculation pipeline.</p></div>
+  <div class="report-section-heading"><span class="report-eyebrow">ENVIRONMENTAL OUTCOME</span><h2>Annual avoided emissions</h2><p>Planning estimate from modeled energy, not a measured reduction.</p></div>
   <div class="environment-hero">
     <span>Annual CO₂ avoided</span><strong>{{ loc.co2_reduction_tons }} <small>tonnes/year</small></strong>
     <div class="environment-rule"></div>
-    <p>Lifetime CO₂ is not shown because the current model does not persist a degradation-adjusted emissions series.</p>
+    <p>{% if loc.chart_data.environment.lifetime_co2_tons is not none %}Degradation-adjusted 25-year planning estimate: {{ loc.chart_data.environment.lifetime_co2_tons }} tonnes CO₂.{% else %}Lifetime CO₂ is unavailable for this estimate.{% endif %}</p>
   </div>
   <div class="stat-grid">
     <div class="stat-card"><span class="label">CO₂ Reduction / Year</span><span class="value">-{{ loc.co2_reduction_tons }} Tons</span></div>
-    <div class="stat-card"><span class="label">Per kW Reference</span><span class="value">1.4 Tons/kW/Year</span></div>
+    <div class="stat-card"><span class="label">Grid factor</span><span class="value">{% if loc.chart_data.environment.provenance %}{{ loc.chart_data.environment.provenance.value }} kg CO₂/kWh{% else %}Unavailable{% endif %}</span></div>
   </div>
 
   <div class="equivalents-grid">

@@ -94,10 +94,11 @@ translations/             Babel catalogs
 run.py                    Flask/Gunicorn application entry point
 Dockerfile                Container image
 docker-compose.yml        SQLite and optional PostgreSQL services
-solar_app/                Embedded historical Git checkout; not the active app
 ```
 
-The active application is the root `app/` package. Do not edit `solar_app/` for current features; see [Architecture](docs/architecture.md#embedded-solar_app-checkout).
+The root `app/` package is the sole application workspace. The obsolete
+`solar_app/` checkout was removed after its complete Git history and working
+state were archived; see [Architecture](docs/architecture.md#historical-solar_app-archive).
 
 ## Team documentation
 

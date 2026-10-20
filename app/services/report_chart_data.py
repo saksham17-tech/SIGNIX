@@ -187,8 +187,10 @@ def build_report_chart_data(data):
     self_fraction = _number(pick("self_consumption_frac"))
     exported = _number(pick("exported_kwh"))
     energy_flow = {"available": False, "reason": "Consumption or export data unavailable"}
-    if annual_consumption is not None and self_fraction is not None and exported is not None:
+    self_consumed = _number(pick("self_consumed_kwh"))
+    if self_consumed is None and self_fraction is not None:
         self_consumed = round(annual_generation * self_fraction, 2)
+    if annual_consumption is not None and self_consumed is not None and exported is not None:
         energy_flow = {
             "available": True,
             "solar_generation_kwh": round(annual_generation, 2),
@@ -229,7 +231,6 @@ def build_report_chart_data(data):
                 grid_lifetime
                 - lifetime_savings
                 + financial["initial_investment"]
-                + annual_om * YEARS
             )
             electricity_cost = {
                 "available": True,
@@ -239,8 +240,7 @@ def build_report_chart_data(data):
                     round(
                         grid_lifetime
                         - lifetime_savings
-                        + financing["dpa"]["total_cash_outflow"]
-                        + annual_om * YEARS,
+                        + financing["dpa"]["total_cash_outflow"],
                         2,
                     )
                     if financing.get("available")
@@ -289,6 +289,14 @@ def build_report_chart_data(data):
         "km_not_driven": _number(equivalents.get("km_not_driven"), 0.0),
         "fuel_liters_saved": _number(equivalents.get("fuel_liters_saved"), 0.0),
     }
+    financial_provenance = pick("financial_provenance") or {}
+    emissions = financial_provenance.get("environmental_factor") or {}
+    emissions_factor = _number(emissions.get("value"))
+    if lifetime_generation is not None and emissions_factor is not None:
+        environment["lifetime_co2_tons"] = round(
+            lifetime_generation * emissions_factor / 1000.0, 2
+        )
+    environment["provenance"] = emissions or None
 
     return {
         "schema_version": "1.0",

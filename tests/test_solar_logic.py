@@ -538,8 +538,8 @@ def test_tariff_escalation_changes_cashflow_and_dual_payback(monkeypatch):
     assert fin["nominal_payback_years"] is not None
     # With positive escalation and zero degradation, nominal payback <= simple
     assert fin["nominal_payback_years"] <= fin["simple_payback_years"]
-    # Simple payback = net / year-1 annual savings
-    expected_simple = round(fin["net_investment"] / fin["annual_savings"], 1)
+    # Simple payback uses year-one net operating savings (gross value less O&M).
+    expected_simple = round(fin["net_investment"] / fin["year_one_net_savings"], 1)
     assert fin["simple_payback_years"] == expected_simple
 
     # Flat escalation (0%) cashflow must differ from 4% on later years

@@ -40,7 +40,8 @@ class Assumption:
 
 
 # ---------------------------------------------------------------------------
-# Current active set (v1 — matches historical Config / solar_logic defaults)
+# Current active set. Financial assumptions added in v2 deliberately make
+# estimates saved under v1 stale rather than silently reinterpreting them.
 # effective_from is the prototype baseline date used across the codebase.
 # ---------------------------------------------------------------------------
 
@@ -97,8 +98,31 @@ CO2_TONS_PER_KW_YEAR = Assumption(
     key="co2_tons_per_kw_year",
     value=1.4,
     effective_from=_EFFECTIVE,
-    source="Prototype environmental factor (grid displacement planning figure)",
-    note="tCO₂ avoided per kW installed per year. Same as Config.CO2_TONS_PER_KW_YEAR.",
+    source="Deprecated Phase 11 prototype factor",
+    note="Historical compatibility constant only; v2 uses modeled energy and the CEA grid factor.",
+)
+
+GRID_EMISSIONS_KG_CO2_PER_KWH = Assumption(
+    key="grid_emissions_kg_co2_per_kwh",
+    value=0.710,
+    effective_from="2026-10-19",
+    source="Central Electricity Authority CO2 Baseline Database v22.0, FY 2024-25",
+    note=(
+        "India-grid weighted-average emission rate including renewable generation "
+        "and imports. Applied to modeled annual energy; this is a planning estimate, "
+        "not a measured or location-specific reduction."
+    ),
+)
+
+DISCOUNT_RATE = Assumption(
+    key="discount_rate",
+    value=0.08,
+    effective_from="2026-10-19",
+    source="SIGNIX homeowner planning assumption",
+    note=(
+        "Nominal annual discount rate used for NPV, discounted payback and discounted "
+        "LCOE. It is a scenario assumption, not a quoted financing rate."
+    ),
 )
 
 ANNUAL_TARIFF_ESCALATION = Assumption(
@@ -142,14 +166,15 @@ ASSUMPTIONS_V1: Dict[str, Assumption] = {
     DEGRADATION_PCT.key: DEGRADATION_PCT,
     OM_PERCENT.key: OM_PERCENT,
     SOILING_LOSS_PCT.key: SOILING_LOSS_PCT,
-    CO2_TONS_PER_KW_YEAR.key: CO2_TONS_PER_KW_YEAR,
+    GRID_EMISSIONS_KG_CO2_PER_KWH.key: GRID_EMISSIONS_KG_CO2_PER_KWH,
+    DISCOUNT_RATE.key: DISCOUNT_RATE,
     ANNUAL_TARIFF_ESCALATION.key: ANNUAL_TARIFF_ESCALATION,
     MODULE_WATTAGE.key: MODULE_WATTAGE,
     PRACTICAL_MAX_KWP.key: PRACTICAL_MAX_KWP,
 }
 
-ASSUMPTIONS_VERSION = "v1"
-ASSUMPTIONS_VERSION_DATE = _EFFECTIVE
+ASSUMPTIONS_VERSION = "v2"
+ASSUMPTIONS_VERSION_DATE = "2026-10-19"
 
 # Shared copy for all monetary surfaces (API, web UI, PDF). Do not duplicate.
 MONETARY_DISCLAIMER = "Indicative only — verify with DISCOM / vendor"

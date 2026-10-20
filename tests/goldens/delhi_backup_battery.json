@@ -75,6 +75,7 @@
     "annual_generation": 2789.5,
     "annual_om": 1560.0,
     "annual_savings": 23342.54,
+    "avoided_retail_value": 23342.54,
     "battery_cost": 50040.0,
     "battery_kwh": 5.56,
     "battery_sizing": {
@@ -103,65 +104,100 @@
     },
     "capacity_factor": 15.9,
     "cashflow_25yr": [
-      -96697.46,
-      -72542.6,
-      -47547.15,
-      -21681.86,
-      5083.54,
-      32780.38,
-      61441.07,
-      91099.15,
-      121789.34,
-      153547.54,
-      186410.92,
-      220417.96,
-      255608.43,
-      292023.54,
-      329705.89,
-      368699.59,
-      409050.26,
-      450805.15,
-      494013.1,
-      538724.68,
-      584992.24,
-      632869.9,
-      682413.7,
-      733681.63,
-      786733.68
+      -98257.46,
+      -75662.6,
+      -52227.15,
+      -27921.86,
+      -2716.46,
+      23420.38,
+      50521.07,
+      78619.15,
+      107749.34,
+      137947.54,
+      169250.92,
+      201697.96,
+      235328.43,
+      270183.54,
+      306305.89,
+      343739.59,
+      382530.26,
+      422725.15,
+      464373.1,
+      507524.68,
+      552232.24,
+      598549.9,
+      646533.7,
+      696241.63,
+      747733.68
     ],
-    "co2_reduction_tons": 2.8,
+    "co2_reduction_tons": 1.98,
     "cost_per_kw": 65000,
     "daily_units_per_kw_range": [
       4.0,
       5.5
     ],
     "dc_note": "System size is DC kWp. AC output depends on PR, irradiance and grid availability.",
+    "discount_rate_pct": 8.0,
+    "discounted_payback_years": 6.7,
     "emi": {
       "annual_rate_pct": 10.0,
       "covers_emi": false,
       "monthly_emi": 2550.5,
+      "monthly_net_savings_after_om": 1815.21,
       "monthly_savings": 1945.21,
-      "net_after_emi": -605.29,
+      "net_after_emi": -735.29,
       "principal": 120040.0,
       "tenure_years": 5,
       "total_interest": 32990.0,
       "total_payment": 153030.0
     },
     "environmental_equivalents": {
-      "fuel_liters_saved": 1212,
-      "km_not_driven": 23333,
-      "trees_planted": 133
+      "fuel_liters_saved": 857,
+      "km_not_driven": 16500,
+      "trees_planted": 94
     },
     "export_value": 0.0,
     "exported_kwh": 455.25,
     "feed_in_tariff": 3.0,
+    "financial_provenance": {
+      "annual_consumption_kwh": 3000.0,
+      "discount_rate_pct": 8.0,
+      "environmental_factor": {
+        "scope": "India_grid_weighted_average_planning_estimate",
+        "source": "Central Electricity Authority CO2 Baseline Database v22.0, FY 2024-25",
+        "units": "kg_CO2_per_kWh",
+        "value": 0.71
+      },
+      "export_compensation_basis": "no_export_value_assumed",
+      "feed_in_tariff_per_kwh": 3.0,
+      "generation_input_kwh": 2789.5,
+      "input_fingerprint": "5a2771f5f7896a4a550091de3658e9e5e1b03acc7909167d163bcc67d215adb4",
+      "inputs": {
+        "annual_consumption_kwh": 3000.0,
+        "assumption_fingerprint": "f4687175f9eb521c573df7e9a83e0493f3a5a8648f8828006ee7ae1d0f88887d",
+        "battery_cost": 50040.0,
+        "feed_in_tariff_per_kwh": 3.0,
+        "generation_kwh": 2789.5,
+        "net_metering_mode": "full_offset",
+        "self_consumption_fraction": 0.8368,
+        "subsidy_amount": 60000.0,
+        "system_cost": 130000.0,
+        "system_size_kw": 2.0,
+        "tariff_per_kwh": 10.0
+      },
+      "model_version": "2.0",
+      "om_treatment": "constant_nominal_annual_reserve_subtracted_once",
+      "self_consumption_basis": "load_profile_assumption_capped_by_estimated_demand",
+      "tariff_per_kwh": 10.0
+    },
     "financing_comparison": {
       "assumptions": {
+        "annual_om": 1560.0,
         "degradation_pct": 0.5,
         "down_payment_pct": 20.0,
         "dpa_rate_pct": 10.0,
         "dpa_tenure_years": 5,
-        "note": "Indicative comparison only. CAPEX = full net investment upfront. DPA = down-payment + reducing-balance EMI on remainder. Equity IRR uses annual net cash flows (savings \u2212 EMI) with no terminal value. Not a loan offer \u2014 verify rates with your bank/NBFC.",
+        "note": "Indicative comparison only. CAPEX = full net investment upfront. DPA = down-payment + reducing-balance EMI on remainder. Equity IRR uses annual net cash flows (energy value \u2212 O&M \u2212 EMI) with no terminal value. Not a loan offer \u2014 verify rates with your bank/NBFC.",
         "tariff_escalation_pct": 4.0,
         "years": 25
       },
@@ -169,38 +205,38 @@
         "annual_rate_pct": null,
         "cash_flows": [
           -120040.0,
-          23342.54,
-          24154.86,
-          24995.45,
-          25865.29,
-          26765.4,
-          27696.84,
-          28660.69,
-          29658.08,
-          30690.18,
-          31758.2,
-          32863.39,
-          34007.03,
-          35190.48,
-          36415.11,
-          37682.35,
-          38993.7,
-          40350.68,
-          41754.88,
-          43207.95,
-          44711.59,
-          46267.55,
-          47877.66,
-          49543.8,
-          51267.93,
-          53052.05
+          21782.54,
+          22594.86,
+          23435.45,
+          24305.29,
+          25205.4,
+          26136.84,
+          27100.69,
+          28098.08,
+          29130.18,
+          30198.2,
+          31303.39,
+          32447.03,
+          33630.48,
+          34855.11,
+          36122.35,
+          37433.7,
+          38790.68,
+          40194.88,
+          41647.95,
+          43151.59,
+          44707.55,
+          46317.66,
+          47983.8,
+          49707.93,
+          51492.05
         ],
         "down_payment": 120040.0,
-        "equity_irr_pct": 22.7,
+        "equity_irr_pct": 21.5,
         "label": "CAPEX (Cash Purchase)",
         "loan_amount": 0.0,
         "monthly_emi": 0.0,
-        "payback_years": 4.8,
+        "payback_years": 5.1,
         "tenure_years": null,
         "total_cash_outflow": 120040.0
       },
@@ -209,39 +245,40 @@
         "annual_rate_pct": 10.0,
         "cash_flows": [
           -24008.0,
-          -1142.26,
-          -329.94,
-          510.65,
-          1380.49,
-          2280.6,
-          27696.84,
-          28660.69,
-          29658.08,
-          30690.18,
-          31758.2,
-          32863.39,
-          34007.03,
-          35190.48,
-          36415.11,
-          37682.35,
-          38993.7,
-          40350.68,
-          41754.88,
-          43207.95,
-          44711.59,
-          46267.55,
-          47877.66,
-          49543.8,
-          51267.93,
-          53052.05
+          -2702.26,
+          -1889.94,
+          -1049.35,
+          -179.51,
+          720.6,
+          26136.84,
+          27100.69,
+          28098.08,
+          29130.18,
+          30198.2,
+          31303.39,
+          32447.03,
+          33630.48,
+          34855.11,
+          36122.35,
+          37433.7,
+          38790.68,
+          40194.88,
+          41647.95,
+          43151.59,
+          44707.55,
+          46317.66,
+          47983.8,
+          49707.93,
+          51492.05
         ],
         "covers_emi": false,
         "down_payment": 24008.0,
-        "equity_irr_pct": 32.1,
+        "equity_irr_pct": 29.4,
         "label": "DPA (Deferred Payment / Loan)",
         "loan_amount": 96032.0,
         "monthly_emi": 2040.4,
-        "payback_years": 5.8,
+        "monthly_operating_benefit": 1815.21,
+        "payback_years": 6.1,
         "tenure_years": 5,
         "total_cash_outflow": 146432.0,
         "total_interest": 26392.0,
@@ -345,7 +382,322 @@
     "inverter_type": "Hybrid",
     "irradiance_confidence": "high",
     "irradiance_source": "nasa_power",
-    "lcoe": 1.83,
+    "lcoe": 4.78,
+    "lifecycle_projection": {
+      "discount_rate_pct": 8.0,
+      "discounted_lcoe": 4.78,
+      "discounted_payback_years": 6.7,
+      "lifetime_generation_kwh": 65709.32,
+      "lifetime_gross_savings": 906773.68,
+      "lifetime_net_savings_before_upfront": 867773.68,
+      "lifetime_om_cost": 39000.0,
+      "nominal_payback_years": 5.1,
+      "npv": 202387.23,
+      "om_escalation_pct": 0.0,
+      "schema_version": "1.0",
+      "years": [
+        {
+          "avoided_retail_value": 23342.54,
+          "cumulative_cash_flow": -98257.46,
+          "discounted_cumulative_cash_flow": -99870.98,
+          "discounted_net_cash_flow": 20169.02,
+          "export_value": 0.0,
+          "generation_kwh": 2789.5,
+          "gross_savings": 23342.54,
+          "net_cash_flow": 21782.54,
+          "om_cost": 1560.0,
+          "year": 1
+        },
+        {
+          "avoided_retail_value": 24154.86,
+          "cumulative_cash_flow": -75662.6,
+          "discounted_cumulative_cash_flow": -80499.53,
+          "discounted_net_cash_flow": 19371.45,
+          "export_value": 0.0,
+          "generation_kwh": 2775.55,
+          "gross_savings": 24154.86,
+          "net_cash_flow": 22594.86,
+          "om_cost": 1560.0,
+          "year": 2
+        },
+        {
+          "avoided_retail_value": 24995.45,
+          "cumulative_cash_flow": -52227.15,
+          "discounted_cumulative_cash_flow": -61895.72,
+          "discounted_net_cash_flow": 18603.82,
+          "export_value": 0.0,
+          "generation_kwh": 2761.67,
+          "gross_savings": 24995.45,
+          "net_cash_flow": 23435.45,
+          "om_cost": 1560.0,
+          "year": 3
+        },
+        {
+          "avoided_retail_value": 25865.29,
+          "cumulative_cash_flow": -27921.86,
+          "discounted_cumulative_cash_flow": -44030.6,
+          "discounted_net_cash_flow": 17865.11,
+          "export_value": 0.0,
+          "generation_kwh": 2747.87,
+          "gross_savings": 25865.29,
+          "net_cash_flow": 24305.29,
+          "om_cost": 1560.0,
+          "year": 4
+        },
+        {
+          "avoided_retail_value": 26765.4,
+          "cumulative_cash_flow": -2716.46,
+          "discounted_cumulative_cash_flow": -26876.23,
+          "discounted_net_cash_flow": 17154.37,
+          "export_value": 0.0,
+          "generation_kwh": 2734.13,
+          "gross_savings": 26765.4,
+          "net_cash_flow": 25205.4,
+          "om_cost": 1560.0,
+          "year": 5
+        },
+        {
+          "avoided_retail_value": 27696.84,
+          "cumulative_cash_flow": 23420.38,
+          "discounted_cumulative_cash_flow": -10405.58,
+          "discounted_net_cash_flow": 16470.64,
+          "export_value": 0.0,
+          "generation_kwh": 2720.46,
+          "gross_savings": 27696.84,
+          "net_cash_flow": 26136.84,
+          "om_cost": 1560.0,
+          "year": 6
+        },
+        {
+          "avoided_retail_value": 28660.69,
+          "cumulative_cash_flow": 50521.07,
+          "discounted_cumulative_cash_flow": 5407.41,
+          "discounted_net_cash_flow": 15812.99,
+          "export_value": 0.0,
+          "generation_kwh": 2706.85,
+          "gross_savings": 28660.69,
+          "net_cash_flow": 27100.69,
+          "om_cost": 1560.0,
+          "year": 7
+        },
+        {
+          "avoided_retail_value": 29658.08,
+          "cumulative_cash_flow": 78619.15,
+          "discounted_cumulative_cash_flow": 20587.93,
+          "discounted_net_cash_flow": 15180.52,
+          "export_value": 0.0,
+          "generation_kwh": 2693.32,
+          "gross_savings": 29658.08,
+          "net_cash_flow": 28098.08,
+          "om_cost": 1560.0,
+          "year": 8
+        },
+        {
+          "avoided_retail_value": 30690.18,
+          "cumulative_cash_flow": 107749.34,
+          "discounted_cumulative_cash_flow": 35160.27,
+          "discounted_net_cash_flow": 14572.34,
+          "export_value": 0.0,
+          "generation_kwh": 2679.85,
+          "gross_savings": 30690.18,
+          "net_cash_flow": 29130.18,
+          "om_cost": 1560.0,
+          "year": 9
+        },
+        {
+          "avoided_retail_value": 31758.2,
+          "cumulative_cash_flow": 137947.54,
+          "discounted_cumulative_cash_flow": 49147.88,
+          "discounted_net_cash_flow": 13987.61,
+          "export_value": 0.0,
+          "generation_kwh": 2666.45,
+          "gross_savings": 31758.2,
+          "net_cash_flow": 30198.2,
+          "om_cost": 1560.0,
+          "year": 10
+        },
+        {
+          "avoided_retail_value": 32863.39,
+          "cumulative_cash_flow": 169250.92,
+          "discounted_cumulative_cash_flow": 62573.37,
+          "discounted_net_cash_flow": 13425.49,
+          "export_value": 0.0,
+          "generation_kwh": 2653.12,
+          "gross_savings": 32863.39,
+          "net_cash_flow": 31303.39,
+          "om_cost": 1560.0,
+          "year": 11
+        },
+        {
+          "avoided_retail_value": 34007.03,
+          "cumulative_cash_flow": 201697.96,
+          "discounted_cumulative_cash_flow": 75458.53,
+          "discounted_net_cash_flow": 12885.16,
+          "export_value": 0.0,
+          "generation_kwh": 2639.86,
+          "gross_savings": 34007.03,
+          "net_cash_flow": 32447.03,
+          "om_cost": 1560.0,
+          "year": 12
+        },
+        {
+          "avoided_retail_value": 35190.48,
+          "cumulative_cash_flow": 235328.43,
+          "discounted_cumulative_cash_flow": 87824.39,
+          "discounted_net_cash_flow": 12365.86,
+          "export_value": 0.0,
+          "generation_kwh": 2626.66,
+          "gross_savings": 35190.48,
+          "net_cash_flow": 33630.48,
+          "om_cost": 1560.0,
+          "year": 13
+        },
+        {
+          "avoided_retail_value": 36415.11,
+          "cumulative_cash_flow": 270183.54,
+          "discounted_cumulative_cash_flow": 99691.19,
+          "discounted_net_cash_flow": 11866.81,
+          "export_value": 0.0,
+          "generation_kwh": 2613.52,
+          "gross_savings": 36415.11,
+          "net_cash_flow": 34855.11,
+          "om_cost": 1560.0,
+          "year": 14
+        },
+        {
+          "avoided_retail_value": 37682.35,
+          "cumulative_cash_flow": 306305.89,
+          "discounted_cumulative_cash_flow": 111078.46,
+          "discounted_net_cash_flow": 11387.27,
+          "export_value": 0.0,
+          "generation_kwh": 2600.46,
+          "gross_savings": 37682.35,
+          "net_cash_flow": 36122.35,
+          "om_cost": 1560.0,
+          "year": 15
+        },
+        {
+          "avoided_retail_value": 38993.7,
+          "cumulative_cash_flow": 343739.59,
+          "discounted_cumulative_cash_flow": 122005.0,
+          "discounted_net_cash_flow": 10926.54,
+          "export_value": 0.0,
+          "generation_kwh": 2587.45,
+          "gross_savings": 38993.7,
+          "net_cash_flow": 37433.7,
+          "om_cost": 1560.0,
+          "year": 16
+        },
+        {
+          "avoided_retail_value": 40350.68,
+          "cumulative_cash_flow": 382530.26,
+          "discounted_cumulative_cash_flow": 132488.92,
+          "discounted_net_cash_flow": 10483.92,
+          "export_value": 0.0,
+          "generation_kwh": 2574.52,
+          "gross_savings": 40350.68,
+          "net_cash_flow": 38790.68,
+          "om_cost": 1560.0,
+          "year": 17
+        },
+        {
+          "avoided_retail_value": 41754.88,
+          "cumulative_cash_flow": 422725.15,
+          "discounted_cumulative_cash_flow": 142547.65,
+          "discounted_net_cash_flow": 10058.73,
+          "export_value": 0.0,
+          "generation_kwh": 2561.64,
+          "gross_savings": 41754.88,
+          "net_cash_flow": 40194.88,
+          "om_cost": 1560.0,
+          "year": 18
+        },
+        {
+          "avoided_retail_value": 43207.95,
+          "cumulative_cash_flow": 464373.1,
+          "discounted_cumulative_cash_flow": 152197.98,
+          "discounted_net_cash_flow": 9650.33,
+          "export_value": 0.0,
+          "generation_kwh": 2548.84,
+          "gross_savings": 43207.95,
+          "net_cash_flow": 41647.95,
+          "om_cost": 1560.0,
+          "year": 19
+        },
+        {
+          "avoided_retail_value": 44711.59,
+          "cumulative_cash_flow": 507524.68,
+          "discounted_cumulative_cash_flow": 161456.08,
+          "discounted_net_cash_flow": 9258.1,
+          "export_value": 0.0,
+          "generation_kwh": 2536.09,
+          "gross_savings": 44711.59,
+          "net_cash_flow": 43151.59,
+          "om_cost": 1560.0,
+          "year": 20
+        },
+        {
+          "avoided_retail_value": 46267.55,
+          "cumulative_cash_flow": 552232.24,
+          "discounted_cumulative_cash_flow": 170337.49,
+          "discounted_net_cash_flow": 8881.41,
+          "export_value": 0.0,
+          "generation_kwh": 2523.41,
+          "gross_savings": 46267.55,
+          "net_cash_flow": 44707.55,
+          "om_cost": 1560.0,
+          "year": 21
+        },
+        {
+          "avoided_retail_value": 47877.66,
+          "cumulative_cash_flow": 598549.9,
+          "discounted_cumulative_cash_flow": 178857.18,
+          "discounted_net_cash_flow": 8519.69,
+          "export_value": 0.0,
+          "generation_kwh": 2510.79,
+          "gross_savings": 47877.66,
+          "net_cash_flow": 46317.66,
+          "om_cost": 1560.0,
+          "year": 22
+        },
+        {
+          "avoided_retail_value": 49543.8,
+          "cumulative_cash_flow": 646533.7,
+          "discounted_cumulative_cash_flow": 187029.56,
+          "discounted_net_cash_flow": 8172.38,
+          "export_value": 0.0,
+          "generation_kwh": 2498.24,
+          "gross_savings": 49543.8,
+          "net_cash_flow": 47983.8,
+          "om_cost": 1560.0,
+          "year": 23
+        },
+        {
+          "avoided_retail_value": 51267.93,
+          "cumulative_cash_flow": 696241.63,
+          "discounted_cumulative_cash_flow": 194868.47,
+          "discounted_net_cash_flow": 7838.91,
+          "export_value": 0.0,
+          "generation_kwh": 2485.75,
+          "gross_savings": 51267.93,
+          "net_cash_flow": 49707.93,
+          "om_cost": 1560.0,
+          "year": 24
+        },
+        {
+          "avoided_retail_value": 53052.05,
+          "cumulative_cash_flow": 747733.68,
+          "discounted_cumulative_cash_flow": 202387.23,
+          "discounted_net_cash_flow": 7518.76,
+          "export_value": 0.0,
+          "generation_kwh": 2473.32,
+          "gross_savings": 53052.05,
+          "net_cash_flow": 51492.05,
+          "om_cost": 1560.0,
+          "year": 25
+        }
+      ]
+    },
     "lifetime_kwh": 65709.0,
     "load_profile": "flat",
     "load_profile_label": "Flat / mixed",
@@ -368,7 +720,8 @@
     "needs_backup": true,
     "net_investment": 120040.0,
     "net_metering_mode": "full_offset",
-    "nominal_payback_years": 4.8,
+    "nominal_payback_years": 5.1,
+    "npv": 202387.23,
     "obstructed_area_sqm": 0.0,
     "orientation_deg": 180.0,
     "orientation_factor": 1.0,
@@ -381,7 +734,7 @@
       "note": "Based on 545 W modules \u2014 indicative count only, not a layout.",
       "panel_count": 4
     },
-    "payback_years": 4.8,
+    "payback_years": 5.1,
     "peak_sun_hours_assumed": 5.0,
     "performance_ratio": 0.8,
     "planning_notes": [
@@ -391,8 +744,8 @@
       "Indicative generation ~4\u20135.5 units/day per kWp on suitable days; shade and orientation matter.",
       "Residential installed cost often ~\u20b955,000\u201385,000/kW; commercial EPC ~\u20b935,000\u201350,000/kW at scale.",
       "Subsidy, net-metering and DISCOM approval are required before treating savings as certain.",
-      "O&M and module cleaning should be budgeted annually; panel degradation ~0.5%/year assumed in cashflow.",
-      "Electricity tariff is assumed to escalate ~4%/year in the nominal 25-year cashflow; simple payback uses a flat year-1 tariff."
+      "O&M and module cleaning are subtracted as a constant nominal annual reserve; panel degradation ~0.5%/year is applied to energy value.",
+      "Electricity tariff is assumed to escalate ~4%/year; fixed feed-in compensation does not escalate. Simple payback uses year-one net savings."
     ],
     "property_type": "residential",
     "recommended_tilt_deg": 28.5,
@@ -400,31 +753,32 @@
     "roof_capacity_kw": 97.76,
     "rule_of_thumb_annual_units": 3240.0,
     "rule_of_thumb_monthly_units": 270.0,
+    "self_consumed_kwh": 2334.25,
     "self_consumption_frac": 0.84,
     "sensitivity": {
       "discount_rate_pct": 8.0,
-      "note": "Indicative sensitivity only \u2014 not a Monte Carlo. NPV discounts escalated/degraded bill savings at 8%/yr.",
+      "note": "Indicative sensitivity only \u2014 not a Monte Carlo. NPV discounts escalated/degraded bill savings less annual O&M.",
       "rows": [
         {
           "base": {
             "annual_savings": 23342.54,
             "net_investment": 120040.0,
-            "npv_8pct": 219039.82,
-            "simple_payback_years": 5.1
+            "npv_8pct": 202387.23,
+            "simple_payback_years": 5.5
           },
           "driver": "Generation \u00b110%",
           "high": {
             "annual_savings": 25676.79,
             "net_investment": 120040.0,
-            "npv_8pct": 252947.8,
-            "simple_payback_years": 4.7
+            "npv_8pct": 236295.16,
+            "simple_payback_years": 5.0
           },
           "high_label": "+10% generation",
           "low": {
             "annual_savings": 21008.28,
             "net_investment": 120040.0,
-            "npv_8pct": 185131.84,
-            "simple_payback_years": 5.7
+            "npv_8pct": 168479.15,
+            "simple_payback_years": 6.2
           },
           "low_label": "\u221210% generation"
         },
@@ -432,22 +786,22 @@
           "base": {
             "annual_savings": 23342.54,
             "net_investment": 120040.0,
-            "npv_8pct": 219039.82,
-            "simple_payback_years": 5.1
+            "npv_8pct": 202387.23,
+            "simple_payback_years": 5.5
           },
           "driver": "Tariff \u00b1\u20b92/kWh",
           "high": {
             "annual_savings": 28011.04,
             "net_investment": 120040.0,
-            "npv_8pct": 286855.78,
-            "simple_payback_years": 4.3
+            "npv_8pct": 270203.09,
+            "simple_payback_years": 4.5
           },
           "high_label": "\u20b912/kWh",
           "low": {
             "annual_savings": 18674.03,
             "net_investment": 120040.0,
-            "npv_8pct": 151223.86,
-            "simple_payback_years": 6.4
+            "npv_8pct": 134571.22,
+            "simple_payback_years": 7.0
           },
           "low_label": "\u20b98/kWh"
         },
@@ -455,28 +809,28 @@
           "base": {
             "annual_savings": 23342.54,
             "net_investment": 120040.0,
-            "npv_8pct": 219039.82,
-            "simple_payback_years": 5.1
+            "npv_8pct": 202387.23,
+            "simple_payback_years": 5.5
           },
           "driver": "System cost \u00b110%",
           "high": {
             "annual_savings": 23342.54,
             "net_investment": 133040.0,
-            "npv_8pct": 206039.82,
-            "simple_payback_years": 5.7
+            "npv_8pct": 187721.96,
+            "simple_payback_years": 6.2
           },
           "high_label": "+10% cost",
           "low": {
             "annual_savings": 23342.54,
             "net_investment": 107040.0,
-            "npv_8pct": 232039.82,
-            "simple_payback_years": 4.6
+            "npv_8pct": 217052.49,
+            "simple_payback_years": 4.9
           },
           "low_label": "\u221210% cost"
         }
       ]
     },
-    "simple_payback_years": 5.1,
+    "simple_payback_years": 5.5,
     "sizing": {
       "constraints": [
         "Roof area",
@@ -505,12 +859,12 @@
           "score": 90
         },
         "co2_reduction": {
-          "score": 93,
-          "tier": "excellent",
-          "tons": 2.8
+          "score": 66,
+          "tier": "good",
+          "tons": 1.98
         },
         "financial_viability": {
-          "ratio": 0.132,
+          "ratio": 0.138,
           "score": 100,
           "tier": "excellent"
         },
@@ -520,8 +874,8 @@
           "tier": "excellent"
         },
         "payback": {
-          "score": 100,
-          "tier": "excellent"
+          "score": 75,
+          "tier": "good"
         },
         "roof_fit": {
           "score": 50,
@@ -530,12 +884,12 @@
         }
       },
       "overall_viability": {
-        "score": 89,
-        "tier": "excellent"
+        "score": 84,
+        "tier": "good"
       },
       "rating_algorithm_version": "1.0",
       "top_limiting_factor": "Adequate roof area for the system size",
-      "top_positive_factor": "Excellent payback period",
+      "top_positive_factor": "Strong lifetime savings outlook",
       "user_priority": "backup_power",
       "weights": {
         "backup_capability": 55,
@@ -552,6 +906,7 @@
     "system_size": 2.0,
     "tariff_escalation_pct": 4.0,
     "temperature_derating_applied": true,
-    "usable_area_sqm": 977.61
+    "usable_area_sqm": 977.61,
+    "year_one_net_savings": 21782.54
   }
 }

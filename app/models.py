@@ -160,6 +160,41 @@ class UserLocation(db.Model):
             calculation_status = "current"
         extras["calculation_status"] = calculation_status
 
+        financial_provenance = extras.get("financial_provenance")
+        if not isinstance(financial_provenance, dict):
+            financial_status = "legacy_unversioned"
+        elif calculation_status != "current":
+            financial_status = "stale_assumptions"
+        else:
+            saved_inputs = financial_provenance.get("inputs") or {}
+
+            def _same_number(left, right, tolerance=1e-6):
+                try:
+                    return abs(float(left) - float(right)) <= tolerance
+                except (TypeError, ValueError):
+                    return left is None and right is None
+
+            numeric_checks = (
+                (saved_inputs.get("generation_kwh"), self.annual_generation),
+                (saved_inputs.get("system_size_kw"), self.system_size),
+                (saved_inputs.get("system_cost"), self.system_cost),
+                (saved_inputs.get("battery_cost"), self.battery_cost or 0),
+                (saved_inputs.get("subsidy_amount"), self.subsidy_amount or 0),
+                (saved_inputs.get("tariff_per_kwh"), extras.get("tariff_per_kwh")),
+                (saved_inputs.get("feed_in_tariff_per_kwh"), extras.get("feed_in_tariff")),
+            )
+            text_checks = (
+                saved_inputs.get("net_metering_mode")
+                == extras.get("net_metering_mode", "full_offset"),
+            )
+            financial_status = (
+                "current"
+                if all(_same_number(left, right) for left, right in numeric_checks)
+                and all(text_checks)
+                else "stale_inputs"
+            )
+        extras["financial_status"] = financial_status
+
         return {
             "id": self.id,
             "user_id": self.user_id,
@@ -214,6 +249,7 @@ class UserLocation(db.Model):
             "payback_years": self.payback_years,
             "suitability_rating": self.suitability_rating,
             "calculation_status": calculation_status,
+            "financial_status": financial_status,
             "extras": extras,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

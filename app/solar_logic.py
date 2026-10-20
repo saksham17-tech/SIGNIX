@@ -16,8 +16,9 @@ import math
 import requests
 from app.assumptions import (
     AREA_PER_KWP,
-    CO2_TONS_PER_KW_YEAR,
     ANNUAL_TARIFF_ESCALATION,
+    DISCOUNT_RATE,
+    GRID_EMISSIONS_KG_CO2_PER_KWH,
     MODULE_WATTAGE,
     PRACTICAL_MAX_KWP,
     DEGRADATION_PCT,
@@ -51,6 +52,7 @@ MONTH_NAMES = [
 MOCK_MONTHLY_PSH = [5.2, 5.8, 6.2, 6.6, 6.4, 5.0, 4.2, 4.3, 4.8, 5.3, 5.0, 4.8]
 
 CALCULATION_MODEL_VERSION = "2.0"
+FINANCIAL_MODEL_VERSION = "2.0"
 PVGIS_PROFILE_KIND = "monthly_specific_yield_kwh_per_kwp"
 
 
@@ -58,6 +60,28 @@ def calculation_assumptions():
     """Return the complete, serializable input set that controls saved results."""
     return {
         "calculation_model_version": CALCULATION_MODEL_VERSION,
+        "financial_model_version": FINANCIAL_MODEL_VERSION,
+        "financial_model": {
+            "projection_years": 25,
+            "residential_cost_per_kw": Config.SYSTEM_COST_PER_KW,
+            "commercial_cost_per_kw": getattr(
+                Config, "COMMERCIAL_COST_PER_KW", 42000
+            ),
+            "battery_cost_per_kwh": getattr(
+                Config, "BATTERY_COST_PER_KWH", 9000
+            ),
+            "subsidy_policy": {
+                "scope": "residential_grid_connected",
+                "first_2_kw_rate": 30000,
+                "third_kw_rate": 18000,
+                "maximum": 78000,
+            },
+            "self_consumption_presets": {
+                "day_heavy": 0.70,
+                "flat": 0.55,
+                "evening_heavy": 0.40,
+            },
+        },
         "assumptions": assumptions_snapshot(),
         "temperature_model": {
             "coefficient_per_celsius": -0.004,
@@ -1739,6 +1763,120 @@ def _annual_generation_series(annual_generation_kwh, years=25, degradation=None)
     return series
 
 
+def build_lifecycle_projection(
+    net_investment,
+    avoided_retail_value_year1,
+    export_value_year1,
+    annual_om,
+    annual_generation_kwh,
+    *,
+    export_value_escalates=False,
+    years=25,
+    degradation=None,
+    tariff_escalation=None,
+    discount_rate=None,
+):
+    """Build the single authoritative lifecycle cash-flow projection.
+
+    Retail bill avoidance escalates with the tariff assumption. A fixed feed-in
+    rate does not. Both energy-value streams degrade with modeled generation.
+    O&M is a constant nominal annual planning reserve and is subtracted exactly
+    once. Discounting is applied only to discounted metrics, never to the
+    nominal cash-flow series.
+    """
+    degradation = (
+        get_value("degradation_pct", DEGRADATION_PCT.value)
+        if degradation is None else float(degradation)
+    )
+    tariff_escalation = (
+        get_value("annual_tariff_escalation", ANNUAL_TARIFF_ESCALATION.value)
+        if tariff_escalation is None else float(tariff_escalation)
+    )
+    discount_rate = (
+        get_value("discount_rate", DISCOUNT_RATE.value)
+        if discount_rate is None else float(discount_rate)
+    )
+    upfront = max(0.0, float(net_investment or 0))
+    retail0 = max(0.0, float(avoided_retail_value_year1 or 0))
+    export0 = max(0.0, float(export_value_year1 or 0))
+    om = max(0.0, float(annual_om or 0))
+    generation0 = max(0.0, float(annual_generation_kwh or 0))
+
+    rows = []
+    cumulative = -upfront
+    discounted_cumulative = -upfront
+    nominal_payback = None
+    discounted_payback = None
+    pv_energy = 0.0
+    pv_om = 0.0
+    for year in range(1, int(years) + 1):
+        degradation_factor = (1 - degradation) ** (year - 1)
+        tariff_factor = (1 + tariff_escalation) ** (year - 1)
+        export_factor = tariff_factor if export_value_escalates else 1.0
+        avoided_retail = retail0 * degradation_factor * tariff_factor
+        export_value = export0 * degradation_factor * export_factor
+        gross_savings = avoided_retail + export_value
+        net_cash_flow = gross_savings - om
+        discount_factor = (1 + discount_rate) ** year
+        discounted_cash_flow = net_cash_flow / discount_factor
+        generation = generation0 * degradation_factor
+        previous = cumulative
+        previous_discounted = discounted_cumulative
+        cumulative += net_cash_flow
+        discounted_cumulative += discounted_cash_flow
+        pv_energy += generation / discount_factor
+        pv_om += om / discount_factor
+        if nominal_payback is None and cumulative >= 0 and net_cash_flow > 0:
+            nominal_payback = round(
+                (year - 1) + max(0.0, min(1.0, -previous / net_cash_flow)), 1
+            )
+        if (
+            discounted_payback is None
+            and discounted_cumulative >= 0
+            and discounted_cash_flow > 0
+        ):
+            discounted_payback = round(
+                (year - 1)
+                + max(0.0, min(1.0, -previous_discounted / discounted_cash_flow)),
+                1,
+            )
+        rows.append({
+            "year": year,
+            "generation_kwh": round(generation, 2),
+            "avoided_retail_value": round(avoided_retail, 2),
+            "export_value": round(export_value, 2),
+            "gross_savings": round(gross_savings, 2),
+            "om_cost": round(om, 2),
+            "net_cash_flow": round(net_cash_flow, 2),
+            "discounted_net_cash_flow": round(discounted_cash_flow, 2),
+            "cumulative_cash_flow": round(cumulative, 2),
+            "discounted_cumulative_cash_flow": round(discounted_cumulative, 2),
+        })
+
+    lifetime_generation = sum(row["generation_kwh"] for row in rows)
+    lifetime_gross_savings = sum(row["gross_savings"] for row in rows)
+    lifetime_om = sum(row["om_cost"] for row in rows)
+    discounted_lcoe = (
+        (upfront + pv_om) / pv_energy if pv_energy > 0 else None
+    )
+    return {
+        "schema_version": "1.0",
+        "years": rows,
+        "nominal_payback_years": nominal_payback,
+        "discounted_payback_years": discounted_payback,
+        "npv": round(discounted_cumulative, 2),
+        "discount_rate_pct": round(discount_rate * 100, 2),
+        "lifetime_generation_kwh": round(lifetime_generation, 2),
+        "lifetime_gross_savings": round(lifetime_gross_savings, 2),
+        "lifetime_om_cost": round(lifetime_om, 2),
+        "lifetime_net_savings_before_upfront": round(
+            lifetime_gross_savings - lifetime_om, 2
+        ),
+        "discounted_lcoe": round(discounted_lcoe, 2) if discounted_lcoe is not None else None,
+        "om_escalation_pct": 0.0,
+    }
+
+
 def build_financing_comparison(
     net_investment,
     annual_savings,
@@ -1748,6 +1886,8 @@ def build_financing_comparison(
     dpa_tenure_years=5,
     dpa_rate_pct=10.0,
     years=25,
+    annual_net_cashflows=None,
+    annual_om=0.0,
 ):
     """Side-by-side CAPEX vs DPA financing comparison (PPA deferred).
 
@@ -1763,14 +1903,27 @@ def build_financing_comparison(
     ann_sav = float(annual_savings or 0)
     mon_sav = float(monthly_savings or 0)
 
+    if annual_net_cashflows is not None:
+        if len(annual_net_cashflows) != years:
+            raise ValueError("annual_net_cashflows must contain one value per year")
+        projected_cashflows = [float(value) for value in annual_net_cashflows]
+    else:
+        projected_cashflows = [
+            ann_sav
+            * ((1 - degradation) ** (y - 1))
+            * ((1 + tariff_escalation) ** (y - 1))
+            - float(annual_om or 0)
+            for y in range(1, years + 1)
+        ]
+    monthly_operating_benefit = (
+        projected_cashflows[0] / 12.0 if projected_cashflows else 0.0
+    )
+
     # ---- CAPEX (cash purchase) ----
     capex_flows = [-net]
     cum = -net
     capex_payback = None
-    for y in range(1, years + 1):
-        deg = (1 - degradation) ** (y - 1)
-        esc = (1 + tariff_escalation) ** (y - 1)
-        cf = ann_sav * deg * esc
+    for y, cf in enumerate(projected_cashflows, start=1):
         prev = cum
         cum += cf
         capex_flows.append(round(cf, 2))
@@ -1792,10 +1945,7 @@ def build_financing_comparison(
     dpa_flows = [-down_payment]  # equity outlay = down payment only
     cum_dpa = -down_payment
     dpa_payback = None
-    for y in range(1, years + 1):
-        deg = (1 - degradation) ** (y - 1)
-        esc = (1 + tariff_escalation) ** (y - 1)
-        year_savings = ann_sav * deg * esc
+    for y, year_savings in enumerate(projected_cashflows, start=1):
         # EMI only during loan tenure
         year_emi = annual_emi if y <= tenure else 0.0
         cf = year_savings - year_emi
@@ -1835,7 +1985,11 @@ def build_financing_comparison(
             "payback_years": dpa_payback,
             "equity_irr_pct": round(dpa_irr * 100, 1) if dpa_irr is not None else None,
             "total_cash_outflow": round(down_payment + emi_info["total_payment"], 2),
-            "covers_emi": bool(mon_sav >= monthly_emi) if monthly_emi else None,
+            "covers_emi": (
+                bool(monthly_operating_benefit >= monthly_emi)
+                if monthly_emi else None
+            ),
+            "monthly_operating_benefit": round(monthly_operating_benefit, 2),
             "cash_flows": dpa_flows,
         },
         "assumptions": {
@@ -1845,10 +1999,12 @@ def build_financing_comparison(
             "years": years,
             "degradation_pct": round(degradation * 100, 2),
             "tariff_escalation_pct": round(tariff_escalation * 100, 2),
+            "annual_om": round(float(annual_om or 0), 2),
             "note": (
                 "Indicative comparison only. CAPEX = full net investment upfront. "
                 "DPA = down-payment + reducing-balance EMI on remainder. "
-                "Equity IRR uses annual net cash flows (savings − EMI) with no terminal value. "
+                "Equity IRR uses annual net cash flows (energy value − O&M − EMI) "
+                "with no terminal value. "
                 "Not a loan offer — verify rates with your bank/NBFC."
             ),
         },
@@ -1857,9 +2013,11 @@ def build_financing_comparison(
 
 
 
-def _project_npv(net_investment, annual_savings, years=25, discount_rate=0.08,
-                 degradation=None, tariff_escalation=None):
-    """NPV of bill savings (degraded + escalated) minus upfront net investment."""
+def _project_npv(net_investment, annual_savings, years=25, discount_rate=None,
+                 degradation=None, tariff_escalation=None, annual_om=0.0):
+    """NPV of nominal energy value less O&M and upfront net investment."""
+    if discount_rate is None:
+        discount_rate = get_value("discount_rate", DISCOUNT_RATE.value)
     if degradation is None:
         degradation = get_value("degradation_pct", DEGRADATION_PCT.value)
     if tariff_escalation is None:
@@ -1871,15 +2029,16 @@ def _project_npv(net_investment, annual_savings, years=25, discount_rate=0.08,
     for year in range(1, years + 1):
         deg = (1 - degradation) ** (year - 1)
         esc = (1 + tariff_escalation) ** (year - 1)
-        cash = savings0 * deg * esc
+        cash = savings0 * deg * esc - float(annual_om or 0)
         npv += cash / ((1 + discount_rate) ** year)
     return round(npv, 2)
 
 
-def _simple_payback(net_investment, annual_savings):
-    if not annual_savings or annual_savings <= 0:
+def _simple_payback(net_investment, annual_savings, annual_om=0.0):
+    net_annual = float(annual_savings or 0) - float(annual_om or 0)
+    if net_annual <= 0:
         return None
-    return round(float(net_investment) / float(annual_savings), 1)
+    return round(float(net_investment) / net_annual, 1)
 
 
 def build_sensitivity_table(
@@ -1890,6 +2049,9 @@ def build_sensitivity_table(
     battery_cost,
     subsidy_amount,
     self_consumption_frac,
+    net_metering_mode="full_offset",
+    feed_in_tariff=None,
+    annual_consumption_kwh=None,
 ):
     """Compact sensitivity: generation ±10%, tariff ±₹2, system cost ±10%.
 
@@ -1904,12 +2066,31 @@ def build_sensitivity_table(
 
     def metrics(gen, tariff, cost):
         net = max(cost + battery_cost - subsidy, 0.0)
-        annual = gen * sc * tariff
+        value = value_generation_kwh(
+            gen,
+            sc,
+            tariff,
+            net_metering_mode=net_metering_mode,
+            feed_in_tariff=feed_in_tariff,
+            annual_consumption_kwh=annual_consumption_kwh,
+        )
+        annual = value["annual_savings"]
+        annual_om = cost * get_value("om_percent", OM_PERCENT.value)
+        projection = build_lifecycle_projection(
+            net,
+            value["avoided_retail_value"],
+            value["export_value"],
+            annual_om,
+            gen,
+            export_value_escalates=(
+                value["net_metering_mode"] == "export_at_tariff"
+            ),
+        )
         return {
             "net_investment": round(net, 2),
             "annual_savings": round(annual, 2),
-            "simple_payback_years": _simple_payback(net, annual),
-            "npv_8pct": _project_npv(net, annual),
+            "simple_payback_years": _simple_payback(net, annual, annual_om),
+            "npv_8pct": projection["npv"],
         }
 
     base = metrics(gen0, tariff0, base_cost)
@@ -1940,10 +2121,12 @@ def build_sensitivity_table(
         },
     ]
     return {
-        "discount_rate_pct": 8.0,
+        "discount_rate_pct": round(
+            get_value("discount_rate", DISCOUNT_RATE.value) * 100, 2
+        ),
         "note": (
             "Indicative sensitivity only — not a Monte Carlo. "
-            "NPV discounts escalated/degraded bill savings at 8%/yr."
+            "NPV discounts escalated/degraded bill savings less annual O&M."
         ),
         "rows": rows,
     }
@@ -2038,13 +2221,20 @@ def value_generation_kwh(
     tariff_per_kwh,
     net_metering_mode="full_offset",
     feed_in_tariff=None,
+    annual_consumption_kwh=None,
 ):
-    """Annual ₹ savings under the selected net-metering mode."""
+    """Value year-one energy without treating generation as measured savings.
+
+    ``self_consumption_frac`` is a planning assumption. When household demand is
+    available, direct consumption is additionally capped by that demand.
+    """
     gen = max(0.0, float(annual_generation_kwh or 0))
     sc = min(max(float(self_consumption_frac or 0), 0.0), 1.0)
     retail = float(tariff_per_kwh or 0)
     mode = resolve_net_metering_mode(net_metering_mode)
     self_kwh = gen * sc
+    if annual_consumption_kwh is not None:
+        self_kwh = min(self_kwh, max(0.0, float(annual_consumption_kwh)))
     export_kwh = gen - self_kwh
     if feed_in_tariff is None:
         feed_in_tariff = getattr(Config, "DEFAULT_FEED_IN_TARIFF", max(retail * 0.3, 0.0))
@@ -2053,12 +2243,15 @@ def value_generation_kwh(
     if mode == "export_at_tariff":
         annual_savings = gen * retail
         export_value = export_kwh * retail
+        export_compensation_basis = "retail_tariff_assumption"
     elif mode == "export_at_feed_in_rate":
         annual_savings = self_kwh * retail + export_kwh * fit
         export_value = export_kwh * fit
+        export_compensation_basis = "feed_in_tariff_assumption"
     else:  # full_offset
         annual_savings = self_kwh * retail
         export_value = 0.0
+        export_compensation_basis = "no_export_value_assumed"
 
     return {
         "net_metering_mode": mode,
@@ -2066,8 +2259,19 @@ def value_generation_kwh(
         "exported_kwh": round(export_kwh, 2),
         "feed_in_tariff": round(fit, 2),
         "export_value": round(export_value, 2),
+        "avoided_retail_value": round(self_kwh * retail, 2),
         "annual_savings": round(annual_savings, 2),
         "monthly_savings": round(annual_savings / 12, 2),
+        "annual_consumption_kwh": (
+            round(float(annual_consumption_kwh), 2)
+            if annual_consumption_kwh is not None else None
+        ),
+        "self_consumption_basis": (
+            "load_profile_assumption_capped_by_estimated_demand"
+            if annual_consumption_kwh is not None
+            else "load_profile_assumption_demand_unavailable"
+        ),
+        "export_compensation_basis": export_compensation_basis,
     }
 
 
@@ -2081,6 +2285,7 @@ def calculate_financials(
     load_profile="flat",
     net_metering_mode="full_offset",
     feed_in_tariff=None,
+    annual_consumption_kwh=None,
 ):
     prop = (property_type or "residential").lower()
     if prop in ("commercial", "industrial", "msme", "factory"):
@@ -2128,39 +2333,54 @@ def calculate_financials(
         tariff_per_kwh,
         net_metering_mode=net_metering_mode,
         feed_in_tariff=feed_in_tariff,
+        annual_consumption_kwh=annual_consumption_kwh,
     )
     usable_kwh = valuation["self_consumed_kwh"]
     annual_savings = valuation["annual_savings"]
     monthly_savings = valuation["monthly_savings"]
+    emissions_factor = get_value(
+        "grid_emissions_kg_co2_per_kwh", GRID_EMISSIONS_KG_CO2_PER_KWH.value
+    )
     co2_reduction_tons = round(
-        system_size_kw * get_value("co2_tons_per_kw_year", CO2_TONS_PER_KW_YEAR.value),
-        2,
+        float(annual_generation_kwh or 0) * emissions_factor / 1000.0, 2
     )
 
-    # 25-year cumulative cashflow: panel degradation + annual tariff escalation.
-    # annual_savings is year-1 (flat tariff). Escalation compounds the tariff leg only.
-    cashflow_25yr = []
-    cumulative = -net_investment
     degradation = get_value("degradation_pct", DEGRADATION_PCT.value)
     tariff_escalation = get_value(
         "annual_tariff_escalation", ANNUAL_TARIFF_ESCALATION.value
     )
-    nominal_payback_years = None
-    for year in range(1, 26):
-        deg_factor = (1 - degradation) ** (year - 1)
-        tariff_factor = (1 + tariff_escalation) ** (year - 1)
-        year_savings = annual_savings * deg_factor * tariff_factor
-        prev = cumulative
-        cumulative += year_savings
-        cashflow_25yr.append(round(cumulative, 2))
-        if nominal_payback_years is None and cumulative >= 0 and year_savings > 0:
-            # Linear interpolation within the crossing year
-            frac = (-prev) / year_savings if year_savings else 0.0
-            nominal_payback_years = round((year - 1) + max(0.0, min(1.0, frac)), 1)
-
-    # Simple payback: flat year-1 tariff (historical behaviour).
-    simple_payback_years = (
-        round(net_investment / annual_savings, 1) if annual_savings > 0 else None
+    lifecycle = build_lifecycle_projection(
+        net_investment=net_investment,
+        avoided_retail_value_year1=valuation["avoided_retail_value"],
+        export_value_year1=valuation["export_value"],
+        annual_om=annual_om,
+        annual_generation_kwh=annual_generation_kwh,
+        export_value_escalates=(valuation["net_metering_mode"] == "export_at_tariff"),
+        degradation=degradation,
+        tariff_escalation=tariff_escalation,
+    )
+    financial_inputs = {
+        "assumption_fingerprint": current_assumption_fingerprint(),
+        "generation_kwh": round(float(annual_generation_kwh or 0), 4),
+        "system_size_kw": round(float(system_size_kw or 0), 6),
+        "tariff_per_kwh": round(float(tariff_per_kwh or 0), 4),
+        "feed_in_tariff_per_kwh": valuation["feed_in_tariff"],
+        "net_metering_mode": valuation["net_metering_mode"],
+        "self_consumption_fraction": self_consumption_frac,
+        "annual_consumption_kwh": valuation["annual_consumption_kwh"],
+        "system_cost": system_cost,
+        "battery_cost": battery_cost,
+        "subsidy_amount": subsidy,
+    }
+    financial_input_fingerprint = hashlib.sha256(
+        json.dumps(financial_inputs, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    cashflow_25yr = [row["cumulative_cash_flow"] for row in lifecycle["years"]]
+    nominal_payback_years = lifecycle["nominal_payback_years"]
+    discounted_payback_years = lifecycle["discounted_payback_years"]
+    year_one_net_savings = round(annual_savings - annual_om, 2)
+    simple_payback_years = _simple_payback(
+        net_investment, annual_savings, annual_om
     )
     # Primary payback shown in summaries = nominal (escalating tariff).
     payback_years = (
@@ -2170,15 +2390,8 @@ def calculate_financials(
     )
 
     # Lifetime energy (25 yr with degradation)
-    lifetime_kwh = round(
-        sum(
-            annual_generation_kwh * ((1 - degradation) ** (y - 1)) for y in range(1, 26)
-        ),
-        0,
-    )
-
-    # Simple LCOE (₹/kWh) = net investment / lifetime kWh
-    lcoe = round(net_investment / lifetime_kwh, 2) if lifetime_kwh > 0 else None
+    lifetime_kwh = round(lifecycle["lifetime_generation_kwh"], 0)
+    lcoe = lifecycle["discounted_lcoe"]
 
     # Specific yield
     specific_yield = (
@@ -2192,9 +2405,14 @@ def calculate_financials(
 
     # EMI defaults: 5-year tenure, 10% p.a. (midpoint of 3–7 yr / 8–12%)
     emi = calculate_emi(net_investment, annual_rate_pct=10.0, tenure_years=5)
-    emi["covers_emi"] = bool(monthly_savings >= emi["monthly_emi"]) if emi["monthly_emi"] else None
+    monthly_net_savings = round(year_one_net_savings / 12.0, 2)
+    emi["covers_emi"] = (
+        bool(monthly_net_savings >= emi["monthly_emi"])
+        if emi["monthly_emi"] else None
+    )
     emi["monthly_savings"] = monthly_savings
-    emi["net_after_emi"] = round(monthly_savings - emi["monthly_emi"], 2)
+    emi["monthly_net_savings_after_om"] = monthly_net_savings
+    emi["net_after_emi"] = round(monthly_net_savings - emi["monthly_emi"], 2)
 
     sensitivity = build_sensitivity_table(
         system_size_kw=system_size_kw,
@@ -2204,6 +2422,9 @@ def calculate_financials(
         battery_cost=battery_cost,
         subsidy_amount=subsidy,
         self_consumption_frac=self_consumption_frac,
+        net_metering_mode=valuation["net_metering_mode"],
+        feed_in_tariff=valuation["feed_in_tariff"],
+        annual_consumption_kwh=valuation["annual_consumption_kwh"],
     )
 
     # CAPEX vs DPA financing comparison (PPA deferred per PRD)
@@ -2215,6 +2436,8 @@ def calculate_financials(
         down_payment_pct=20.0,
         dpa_tenure_years=5,
         dpa_rate_pct=10.0,
+        annual_net_cashflows=[row["net_cash_flow"] for row in lifecycle["years"]],
+        annual_om=annual_om,
     )
     generation_25yr = financing_comparison.get("generation_25yr") or _annual_generation_series(
         annual_generation_kwh
@@ -2230,6 +2453,7 @@ def calculate_financials(
         "subsidy_amount": subsidy,
         "net_investment": net_investment,
         "annual_savings": annual_savings,
+        "year_one_net_savings": year_one_net_savings,
         "monthly_savings": monthly_savings,
         "annual_om": annual_om,
         "co2_reduction_tons": co2_reduction_tons,
@@ -2242,16 +2466,41 @@ def calculate_financials(
         "tariff_escalation_pct": round(tariff_escalation * 100, 2),
         "simple_payback_years": simple_payback_years,
         "nominal_payback_years": nominal_payback_years,
+        "discounted_payback_years": discounted_payback_years,
+        "npv": lifecycle["npv"],
+        "discount_rate_pct": lifecycle["discount_rate_pct"],
+        "lifecycle_projection": lifecycle,
 
         "payback_years": payback_years,
         "self_consumption_frac": round(self_consumption_frac, 2),
+        "self_consumed_kwh": valuation["self_consumed_kwh"],
         "load_profile": profile_key,
         "load_profile_label": profile_meta.get("label"),
         "load_profile_note": profile_meta.get("note"),
         "net_metering_mode": valuation["net_metering_mode"],
         "exported_kwh": valuation["exported_kwh"],
         "export_value": valuation["export_value"],
+        "avoided_retail_value": valuation["avoided_retail_value"],
         "feed_in_tariff": valuation["feed_in_tariff"],
+        "financial_provenance": {
+            "model_version": FINANCIAL_MODEL_VERSION,
+            "input_fingerprint": financial_input_fingerprint,
+            "inputs": financial_inputs,
+            "generation_input_kwh": round(float(annual_generation_kwh or 0), 2),
+            "self_consumption_basis": valuation["self_consumption_basis"],
+            "annual_consumption_kwh": valuation["annual_consumption_kwh"],
+            "export_compensation_basis": valuation["export_compensation_basis"],
+            "tariff_per_kwh": round(float(tariff_per_kwh or 0), 2),
+            "feed_in_tariff_per_kwh": valuation["feed_in_tariff"],
+            "discount_rate_pct": lifecycle["discount_rate_pct"],
+            "om_treatment": "constant_nominal_annual_reserve_subtracted_once",
+            "environmental_factor": {
+                "value": emissions_factor,
+                "units": "kg_CO2_per_kWh",
+                "source": GRID_EMISSIONS_KG_CO2_PER_KWH.source,
+                "scope": "India_grid_weighted_average_planning_estimate",
+            },
+        },
         "lifetime_kwh": lifetime_kwh,
         "lcoe": lcoe,
         "specific_yield": specific_yield,
@@ -2267,8 +2516,8 @@ def calculate_financials(
             "Indicative generation ~4–5.5 units/day per kWp on suitable days; shade and orientation matter.",
             "Residential installed cost often ~₹55,000–85,000/kW; commercial EPC ~₹35,000–50,000/kW at scale.",
             "Subsidy, net-metering and DISCOM approval are required before treating savings as certain.",
-            "O&M and module cleaning should be budgeted annually; panel degradation ~0.5%/year assumed in cashflow.",
-            "Electricity tariff is assumed to escalate ~4%/year in the nominal 25-year cashflow; simple payback uses a flat year-1 tariff.",
+            "O&M and module cleaning are subtracted as a constant nominal annual reserve; panel degradation ~0.5%/year is applied to energy value.",
+            "Electricity tariff is assumed to escalate ~4%/year; fixed feed-in compensation does not escalate. Simple payback uses year-one net savings.",
         ],
     }
 
@@ -2648,6 +2897,11 @@ def run_full_estimation(
         load_profile=load_profile,
         net_metering_mode=net_metering_mode,
         feed_in_tariff=feed_in_tariff,
+        annual_consumption_kwh=(
+            float(bill_sizing["monthly_units"]) * 12
+            if bill_sizing and bill_sizing.get("monthly_units") is not None
+            else None
+        ),
     )
     financial_elapsed = (time.perf_counter() - financial_start) * 1000
     print(

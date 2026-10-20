@@ -146,7 +146,7 @@
     {% if loc.recommended_tilt_deg %}<tr><td>{{ _('Recommended tilt') }}</td><td>{{ loc.recommended_tilt_deg }}° (≈ {{ _('latitude') }})</td></tr>{% endif %}
     {% if loc.performance_ratio %}<tr><td>{{ _('Performance ratio (assumed)') }}</td><td>{{ loc.performance_ratio }}</td></tr>{% endif %}
     {% if loc.peak_sun_hours_assumed %}<tr><td>{{ _('Peak sun hours (assumed)') }}</td><td>{{ loc.peak_sun_hours_assumed }} h/day</td></tr>{% endif %}
-    {% if loc.lcoe %}<tr><td>{{ _('LCOE (25 yr)') }}</td><td>₹{{ loc.lcoe }}/kWh</td></tr>{% endif %}
+    {% if loc.lcoe %}<tr><td>{{ _('Discounted LCOE (25 yr)') }}</td><td>₹{{ loc.lcoe }}/kWh</td></tr>{% endif %}
     {% if loc.lifetime_kwh %}<tr><td>{{ _('Lifetime energy (25 yr, 0.5%%/yr degradation)') }}</td><td>{{ '{:,.0f}'.format(loc.lifetime_kwh) }} kWh</td></tr>{% endif %}
     {% if loc.self_consumption_frac %}<tr><td>{{ _('Self-consumption share') }}</td><td>{{ (loc.self_consumption_frac * 100)|int }}%</td></tr>{% endif %}
   </table>
@@ -173,7 +173,11 @@
   <p class="subsidy-eligibility-assumption">{{ subsidy_eligibility_assumption }}</p>
   <div class="fin-row total"><span>{{ _('Net investment') }}</span><span>₹{{ '{:,.0f}'.format(loc.net_investment or 0) }}</span></div>
   <div class="fin-row"><span>{{ _('Estimated monthly savings') }}</span><span>₹{{ '{:,.0f}'.format(loc.monthly_savings or 0) }}</span></div>
-  <div class="fin-row"><span>{{ _('Est. 25-year bill savings (flat tariff)') }}</span><span>₹{{ '{:,.0f}'.format((loc.monthly_savings or 0) * 12 * 25) }}</span></div>
+  {% if loc.lifecycle_projection %}
+  <div class="fin-row"><span>{{ _('25-year net operating savings') }}</span><span>₹{{ '{:,.0f}'.format(loc.lifecycle_projection.lifetime_net_savings_before_upfront or 0) }}</span></div>
+  <div class="fin-row"><span>{{ _('Discounted payback') }}</span><span>{% if loc.discounted_payback_years %}{{ loc.discounted_payback_years }} years{% else %}{{ _('No break-even in 25 years') }}{% endif %}</span></div>
+  <div class="fin-row"><span>{{ _('Net present value') }} ({{ loc.discount_rate_pct }}%)</span><span>₹{{ '{:,.0f}'.format(loc.npv or 0) }}</span></div>
+  {% endif %}
   {% if loc.annual_om %}
   <div class="fin-row"><span>{{ _('Indicative annual O&M reserve') }}</span><span>₹{{ '{:,.0f}'.format(loc.annual_om) }}</span></div>
   {% endif %}
@@ -204,7 +208,7 @@
     {{ _('Bill path ≈ ₹10/unit · ~135 units/month/kW (~4–5.5 units/day/kWp). Energy check uses PSH × PR.') }}
     {{ _('PM Surya Ghar: ₹30,000/kW for first 2 kW + ₹18,000 for 2–3 kW step · max ₹78,000.') }}
     {{ _('Residential cost band ~₹55k–85k/kW; commercial often ~₹35k–50k/kW. ~10 m² usable roof per kWp.') }}
-    {{ _('0.5%%/yr degradation in 25-yr cashflow. Tariff held constant. Not a licensed design or DISCOM quote.') }}
+    {{ _('0.5%%/yr degradation; retail tariff escalation, annual O&M and an 8%% nominal discount-rate planning assumption are explicit. Not a licensed design or DISCOM quote.') }}
   </div>
 
   {% if loc.planning_notes %}
