@@ -253,7 +253,7 @@ def test_report_renders_serialized_chart_contract(client, app):
 
 def _financing_location(app):
     from app.models import User, UserLocation, db
-    from app.solar_logic import build_financing_comparison
+    from app.solar_logic import build_financing_comparison, current_assumption_fingerprint
 
     comparison = build_financing_comparison(100000, 60000, 5000, 1200)
     with app.app_context():
@@ -268,10 +268,17 @@ def _financing_location(app):
             monthly_data={month: 100 for month in MONTHS},
             roof_area_sqm=100,
             usable_area_sqm=80,
+            system_cost=100000,
+            subsidy_amount=0,
             net_investment=100000,
             monthly_savings=5000,
             extras={
+                "assumption_fingerprint": current_assumption_fingerprint(),
                 "annual_savings": 60000,
+                "annual_om": 0,
+                "tariff_per_kwh": 10,
+                "feed_in_tariff": None,
+                "net_metering_mode": "full_offset",
                 "bill_sizing": {
                     "monthly_bill": 8000,
                     "monthly_units": 800,
@@ -279,6 +286,24 @@ def _financing_location(app):
                 },
                 "cashflow_25yr": [-40000, 30000] + [100000] * 23,
                 "financing_comparison": comparison,
+                "lifecycle_projection": {
+                    "years": [
+                        {"net_cash_flow": value}
+                        for value in comparison["capex"]["cash_flows"][1:]
+                    ]
+                },
+                "financial_provenance": {
+                    "inputs": {
+                        "generation_kwh": 1200,
+                        "system_size_kw": 1,
+                        "system_cost": 100000,
+                        "battery_cost": 0,
+                        "subsidy_amount": 0,
+                        "tariff_per_kwh": 10,
+                        "feed_in_tariff_per_kwh": None,
+                        "net_metering_mode": "full_offset",
+                    }
+                },
                 "generation_25yr": [round(1200 * (0.995 ** year), 1) for year in range(25)],
             },
         )
@@ -307,6 +332,151 @@ def test_financing_preview_recalculates_dpa_and_chart_data(client, app):
     assert second["financing_comparison"]["dpa"]["payback_years"] != first["financing_comparison"]["dpa"]["payback_years"]
     assert second["chart_data"]["financing"]["dpa"]["cumulative_cashflow"] != first["chart_data"]["financing"]["dpa"]["cumulative_cashflow"]
     assert second["chart_data"]["electricity_cost"]["solar_dpa_lifetime_cost"] != first["chart_data"]["electricity_cost"]["solar_dpa_lifetime_cost"]
+
+
+def test_financing_preview_reuses_canonical_lifecycle_cashflows(client, app):
+    from app.models import User, UserLocation, db
+    from app.solar_logic import calculate_financials, current_assumption_fingerprint
+
+    result = calculate_financials(
+        system_size_kw=4.0,
+        annual_generation_kwh=6_000,
+        tariff_per_kwh=8.0,
+        net_metering_mode="export_at_feed_in_rate",
+        feed_in_tariff=3.0,
+        annual_consumption_kwh=3_000,
+    )
+    with app.app_context():
+        user = User.query.filter_by(email="test@example.com").first()
+        location = UserLocation(
+            user_id=user.id,
+            address="Canonical financing preview",
+            latitude=28.614,
+            longitude=77.209,
+            system_size=4.0,
+            annual_generation=6_000,
+            monthly_data={month: 500 for month in MONTHS},
+            roof_area_sqm=100,
+            usable_area_sqm=80,
+            system_cost=result["system_cost"],
+            subsidy_amount=result["subsidy_amount"],
+            net_investment=result["net_investment"],
+            monthly_savings=result["monthly_savings"],
+            extras={
+                "assumption_fingerprint": current_assumption_fingerprint(),
+                "annual_savings": result["annual_savings"],
+                "annual_om": result["annual_om"],
+                "tariff_per_kwh": 8.0,
+                "feed_in_tariff": result["feed_in_tariff"],
+                "net_metering_mode": result["net_metering_mode"],
+                "financial_provenance": result["financial_provenance"],
+                "lifecycle_projection": result["lifecycle_projection"],
+                "financing_comparison": result["financing_comparison"],
+            },
+        )
+        db.session.add(location)
+        db.session.commit()
+        location_id = location.id
+
+    response = client.post(
+        f"/api/estimate/{location_id}/financing-preview",
+        json={"down_payment_pct": 25, "dpa_rate_pct": 11, "dpa_tenure_years": 7},
+    )
+    assert response.status_code == 200
+    preview = response.get_json()["financing_comparison"]
+    canonical = [
+        row["net_cash_flow"] for row in result["lifecycle_projection"]["years"]
+    ]
+    assert preview["capex"]["cash_flows"][1:] == pytest.approx(canonical)
+    assert preview["capex"]["cash_flows"][1] == pytest.approx(
+        result["annual_savings"] - result["annual_om"]
+    )
+    naive_whole_value_escalation = (
+        result["annual_savings"] * 0.995 * 1.04 - result["annual_om"]
+    )
+    assert canonical[1] != pytest.approx(naive_whole_value_escalation)
+    assert preview["assumptions"]["annual_om"] == result["annual_om"]
+    assert preview["dpa"]["loan_amount"] == pytest.approx(
+        result["net_investment"] * 0.75
+    )
+    assert preview["dpa"]["cash_flows"][1] == pytest.approx(
+        canonical[0] - preview["dpa"]["annual_emi"], abs=0.01
+    )
+    assert preview["dpa"]["monthly_operating_benefit"] == pytest.approx(
+        canonical[0] / 12, abs=0.01
+    )
+    assert preview["dpa"]["covers_emi"] == (
+        preview["dpa"]["monthly_operating_benefit"]
+        >= preview["dpa"]["monthly_emi"]
+    )
+
+
+def test_financing_preview_fails_closed_without_saved_cashflow_series(client, app):
+    from app.models import User, UserLocation, db
+    from app.solar_logic import current_assumption_fingerprint
+
+    with app.app_context():
+        user = User.query.filter_by(email="test@example.com").first()
+        location = UserLocation(
+            user_id=user.id,
+            address="Legacy financing data",
+            latitude=28.614,
+            longitude=77.209,
+            system_size=1.0,
+            annual_generation=1_200,
+            monthly_data={month: 100 for month in MONTHS},
+            system_cost=100_000,
+            net_investment=100_000,
+            monthly_savings=5_000,
+            extras={
+                "assumption_fingerprint": current_assumption_fingerprint(),
+                "annual_savings": 60_000,
+                "tariff_per_kwh": 10,
+                "feed_in_tariff": None,
+                "net_metering_mode": "full_offset",
+                "financial_provenance": {
+                    "inputs": {
+                        "generation_kwh": 1_200,
+                        "system_size_kw": 1,
+                        "system_cost": 100_000,
+                        "battery_cost": 0,
+                        "subsidy_amount": 0,
+                        "tariff_per_kwh": 10,
+                        "feed_in_tariff_per_kwh": None,
+                        "net_metering_mode": "full_offset",
+                    }
+                },
+            },
+        )
+        db.session.add(location)
+        db.session.commit()
+        location_id = location.id
+
+    response = client.post(
+        f"/api/estimate/{location_id}/financing-preview",
+        json={"down_payment_pct": 20, "dpa_rate_pct": 10, "dpa_tenure_years": 5},
+    )
+    assert response.status_code == 409
+    assert "no valid saved 25-year lifecycle" in response.get_json()["error"]
+
+
+def test_financing_preview_fails_closed_for_stale_financial_model(client, app):
+    location_id = _financing_location(app)
+    from app.models import UserLocation, db
+
+    with app.app_context():
+        location = db.session.get(UserLocation, location_id)
+        extras = dict(location.extras)
+        extras["assumption_fingerprint"] = "stale-fingerprint"
+        location.extras = extras
+        db.session.commit()
+
+    response = client.post(
+        f"/api/estimate/{location_id}/financing-preview",
+        json={"down_payment_pct": 20, "dpa_rate_pct": 10, "dpa_tenure_years": 5},
+    )
+    assert response.status_code == 409
+    assert "legacy or stale" in response.get_json()["error"]
 
 
 @pytest.mark.parametrize(
@@ -357,3 +527,5 @@ def test_report_renders_dpa_controls_for_financing_data(client, app):
     assert 'id="dpa-interest-rate-range"' in body
     assert 'id="dpa-tenure-range"' in body
     assert f'/api/estimate/{location_id}/financing-preview' in body
+    assert "Year-1 operating benefit after O&amp;M" in body
+    assert "25-year cumulative operating benefit after O&amp;M" in body

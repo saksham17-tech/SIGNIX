@@ -173,6 +173,29 @@ def _finite_number(payload, name, minimum, maximum, *, integer=False):
     return int(number) if integer else number
 
 
+def _persisted_lifecycle_cashflows(context, years=25):
+    """Return the saved annual operating cash flows without re-modelling them.
+
+    Current estimates persist the authoritative lifecycle projection. A
+    financing preview may change loan terms, but must not replace that saved
+    series with a new financial model or infer one for a legacy estimate.
+    """
+
+    lifecycle = context.get("lifecycle_projection")
+    rows = lifecycle.get("years") if isinstance(lifecycle, dict) else None
+    if not isinstance(rows, list) or len(rows) != years:
+        return None
+    candidates = [
+        row.get("net_cash_flow") if isinstance(row, dict) else None
+        for row in rows
+    ]
+    try:
+        cashflows = [float(value) for value in candidates]
+    except (TypeError, ValueError):
+        return None
+    return cashflows if all(math.isfinite(value) for value in cashflows) else None
+
+
 @estimate_bp.route("/api/estimate/<int:location_id>/financing-preview", methods=["POST"])
 @login_required
 def api_financing_preview(location_id):
@@ -197,6 +220,21 @@ def api_financing_preview(location_id):
         return jsonify({"error": str(exc)}), 400
 
     _, context = report
+    if context.get("financial_status") != "current":
+        return jsonify({
+            "error": (
+                "Financing preview is unavailable because this estimate's "
+                "financial model is legacy or stale. Re-run the estimate first."
+            )
+        }), 409
+    annual_net_cashflows = _persisted_lifecycle_cashflows(context)
+    if annual_net_cashflows is None:
+        return jsonify({
+            "error": (
+                "Financing preview is unavailable because this estimate has no "
+                "valid saved 25-year lifecycle cash-flow series."
+            )
+        }), 409
     annual_savings = context.get("annual_savings")
     if annual_savings is None:
         annual_savings = float(context.get("monthly_savings") or 0) * 12
@@ -208,6 +246,8 @@ def api_financing_preview(location_id):
         down_payment_pct=down_payment_pct,
         dpa_tenure_years=dpa_tenure_years,
         dpa_rate_pct=dpa_rate_pct,
+        annual_net_cashflows=annual_net_cashflows,
+        annual_om=context.get("annual_om") or 0,
     )
     preview_context = dict(context)
     preview_context["financing_comparison"] = comparison

@@ -294,8 +294,8 @@
       data: {
         labels: financial.years.map(year => `Y${year}`),
         datasets: [
-          { type: 'bar', label: 'Annual savings', data: financial.annual_savings, backgroundColor: palette.amberSoft, borderColor: palette.amber, borderWidth: 1, borderRadius: 3, yAxisID: 'y' },
-          { type: 'line', label: 'Cumulative savings', data: financial.cumulative_savings, borderColor: palette.green, pointRadius: 1.5, tension: .2, yAxisID: 'y1' },
+          { type: 'bar', label: 'Annual operating benefit after O&M', data: financial.annual_savings, backgroundColor: palette.amberSoft, borderColor: palette.amber, borderWidth: 1, borderRadius: 3, yAxisID: 'y' },
+          { type: 'line', label: 'Cumulative operating benefit after O&M', data: financial.cumulative_savings, borderColor: palette.green, pointRadius: 1.5, tension: .2, yAxisID: 'y1' },
         ],
       },
       options: baseOptions({

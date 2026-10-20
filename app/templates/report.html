@@ -529,7 +529,7 @@
   </div>
   <div class="report-visual-grid">
     <article class="report-visual report-visual-wide">
-      <div class="report-visual-heading"><h3>Annual and cumulative savings</h3></div>
+      <div class="report-visual-heading"><h3>Annual and cumulative operating benefit after O&amp;M</h3></div>
       <div class="chart-frame chart-frame-tall"><canvas id="annualSavingsChart"></canvas></div>
       <p id="annual-savings-empty" class="chart-empty hidden"></p>
     </article>
@@ -795,7 +795,7 @@
           <td id="fc-dpa-out">₹{{ '{:,.0f}'.format(fc.dpa.total_cash_outflow or 0) }}</td>
         </tr>
         <tr>
-          <th>Year-1 solar savings</th>
+          <th>Year-1 operating benefit after O&amp;M</th>
           <td>₹{{ '{:,.0f}'.format(loc.chart_data.financial.annual_savings[0] if loc.chart_data.financial.annual_savings else 0) }}</td>
           <td>₹{{ '{:,.0f}'.format(loc.chart_data.financial.annual_savings[0] if loc.chart_data.financial.annual_savings else 0) }}</td>
         </tr>
@@ -812,7 +812,7 @@
         </tr>
         {% endif %}
         <tr>
-          <th>25-year gross solar savings</th>
+          <th>25-year cumulative operating benefit after O&amp;M</th>
           <td>₹{{ '{:,.0f}'.format(loc.chart_data.financial.cumulative_savings[-1] if loc.chart_data.financial.cumulative_savings else 0) }}</td>
           <td>₹{{ '{:,.0f}'.format(loc.chart_data.financial.cumulative_savings[-1] if loc.chart_data.financial.cumulative_savings else 0) }}</td>
         </tr>
